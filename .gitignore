@@ -1,0 +1,80 @@
+# -------------------
+# Python
+# -------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+.eggs/
+*.manifest
+*.spec
+dist/
+build/
+develop-eggs/
+.installed.cfg
+*.log
+*.pot
+*.pyc
+*.coverage
+.coverage.*
+.cache
+pytest_cache/
+.pytest_cache/
+.hypothesis/
+.dmypy.json
+.pyre/
+.mypy_cache/
+*.sqlite3
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+*.env
+
+# -------------------
+# Node / Next.js
+# -------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.next/
+out/
+.next.cache/
+# build output
+dist/
+build/
+# local env
+.env
+backend/.env
+frontend/.env.local
+frontend/.env.*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# -------------------
+# OS / Editor
+# -------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# -------------------
+# Coverage / Reports
+# -------------------
+coverage/
+coverage.xml
+*.lcov
+htmlcov/
