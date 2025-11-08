@@ -35,6 +35,7 @@ venv/
 env/
 ENV/
 *.env
+.env
 
 # -------------------
 # Node / Next.js
