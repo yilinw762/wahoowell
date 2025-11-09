@@ -79,3 +79,7 @@ coverage/
 coverage.xml
 *.lcov
 htmlcov/
+
+# ------------------- json
+key.json
+
