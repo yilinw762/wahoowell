@@ -19,3 +19,24 @@ class HealthLogOut(HealthLogBase):
     user_id: int
     id: int
     model_config = ConfigDict(from_attributes=True)  # replaces Config.orm_mode = True
+
+from pydantic import BaseModel
+from typing import Optional
+
+class UserBase(BaseModel):
+    email: str
+    name: Optional[str] = None
+    image: Optional[str] = None
+
+class UserCreate(UserBase):
+    provider: Optional[str] = None
+    providerAccountId: Optional[str] = None
+    isNewUser: Optional[bool] = None
+
+class User(UserBase):
+    id: int
+    provider: Optional[str] = None
+    providerAccountId: Optional[str] = None
+
+    class Config:
+        orm_mode = True
