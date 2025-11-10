@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Date, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, Float, Date, ForeignKey, DateTime, func, String # type: ignore
 from sqlalchemy.orm import relationship
 from app.database import Base
 from datetime import datetime
@@ -6,17 +6,17 @@ from datetime import datetime
 class HealthLog(Base):
     __tablename__ = "HealthLogs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("Users.id"), nullable=False)
-    log_date = Column(Date, nullable=False)
-    weight = Column(Float)
-    bmi = Column(Float)
+    log_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False)
+    date = Column(Date, nullable=False)
     steps = Column(Integer)
+    heart_rate_avg = Column(Integer)
     sleep_hours = Column(Float)
-    stress_level = Column(Integer)
+    calories_burned = Column(Integer)
     exercise_minutes = Column(Integer)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
+    stress_level = Column(Integer)
+    notes = Column(String(255))
+    created_at = Column(DateTime, server_default=func.now())
     __table_args__ = (
         # important for upsert
         {'mysql_engine': 'InnoDB'},

@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
 from sqlalchemy.orm import Session
 from datetime import date
 from app.database import Base, engine, get_db
@@ -8,6 +10,7 @@ from fastapi import FastAPI
 from .api import health
 from .api import users  # add this import
 
+from sqlalchemy import text
 
 # Base.metadata.create_all(bind=engine)
 
@@ -15,29 +18,34 @@ app = FastAPI(title="WahooWell API")
 app.include_router(health.router)
 app.include_router(users.router)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
     return {"ok": True, "message": "WahooWell API is running"}
 
-
-# ---- retrieve existing entry ----
+# get a health log by user_id and date
 @app.get("/api/healthlogs", response_model=HealthLogOut | None)
-def get_healthlog(user_id: int, log_date: date, db: Session = Depends(get_db)):
+def get_healthlog(user_id: int, date: date, db: Session = Depends(get_db)):
     log = (
         db.query(HealthLog)
-        .filter(HealthLog.user_id == user_id, HealthLog.log_date == log_date)
+        .filter(HealthLog.user_id == user_id, HealthLog.date == date)
         .first()
     )
     return log
 
-
-# ---- insert or update (upsert) ----
-@app.post("/api/healthlogs")
+# upsert a health log
+@app.post("/api/healthlogs", response_model=HealthLogOut)
 def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
     existing = (
         db.query(HealthLog)
-        .filter(HealthLog.user_id == entry.user_id, HealthLog.log_date == entry.log_date)
+        .filter(HealthLog.user_id == entry.user_id, HealthLog.date == entry.date)
         .first()
     )
     if existing:
@@ -45,21 +53,21 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
             setattr(existing, field, value)
         db.commit()
         db.refresh(existing)
-        return {"message": "updated", "data": existing.id}
+        return existing
     else:
         new_log = HealthLog(**entry.dict())
         db.add(new_log)
         db.commit()
         db.refresh(new_log)
-        return {"message": "inserted", "data": new_log.id}
-from sqlalchemy import text
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.database import get_db, DB_NAME  # or read DB_NAME from env again
+        return new_log
+
+# List all health logs for testing
+@app.get("/api/healthlogs/all", response_model=list[HealthLogOut])
+def list_healthlogs(db: Session = Depends(get_db)):
+    return db.query(HealthLog).all()
 
 
 @app.get("/db-tables")
 def db_tables(db: Session = Depends(get_db)):
     rows = db.execute(text("SHOW TABLES")).all()
     return {"tables": [r[0] for r in rows]}
-

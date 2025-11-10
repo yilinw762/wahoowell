@@ -1,23 +1,26 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict # type: ignore
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 class HealthLogBase(BaseModel):
-    log_date: date
-    weight: Optional[float] = None
-    bmi: Optional[float] = None
+    user_id: int
+    date: date
     steps: Optional[int] = None
+    heart_rate_avg: Optional[int] = None
     sleep_hours: Optional[float] = None
-    stress_level: Optional[int] = None
+    calories_burned: Optional[int] = None
     exercise_minutes: Optional[int] = None
+    stress_level: Optional[int] = None
+    notes: Optional[str] = None
 
 class HealthLogCreate(HealthLogBase):
-    user_id: int
+    pass
 
 class HealthLogOut(HealthLogBase):
-    user_id: int
-    id: int
+    log_id: int
+    created_at: Optional[datetime] = None
+
     model_config = ConfigDict(from_attributes=True)  # replaces Config.orm_mode = True
 
 from pydantic import BaseModel
@@ -40,3 +43,7 @@ class User(UserBase):
 
     class Config:
         orm_mode = True
+    log_id: int
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)  # replaces Config.orm_mode = True

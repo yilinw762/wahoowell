@@ -2,7 +2,234 @@
 
 import { useState } from "react";
 
-type Gender = "Male" | "Female" | "Non-binary" | "Prefer not to say";
+function HealthLogForm() {
+  const [form, setForm] = useState({
+    user_id: "",
+    date: "",
+    steps: "",
+    heart_rate_avg: "",
+    sleep_hours: "",
+    calories_burned: "",
+    exercise_minutes: "",
+    stress_level: "",
+    notes: "",
+  });
+  const [result, setResult] = useState<any>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      user_id: Number(form.user_id),
+      date: form.date,
+      steps: form.steps ? Number(form.steps) : null,
+      heart_rate_avg: form.heart_rate_avg ? Number(form.heart_rate_avg) : null,
+      sleep_hours: form.sleep_hours ? Number(form.sleep_hours) : null,
+      calories_burned: form.calories_burned ? Number(form.calories_burned) : null,
+      exercise_minutes: form.exercise_minutes ? Number(form.exercise_minutes) : null,
+      stress_level: form.stress_level ? Number(form.stress_level) : null,
+      notes: form.notes || null,
+    };
+    const res = await fetch("http://127.0.0.1:8000/api/healthlogs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setResult(await res.json());
+  };
+
+  const groupStyle = { display: "flex", flexDirection: "column" as const, flex: 1, minWidth: 0, marginBottom: 0 };
+  const rowStyle = { display: "flex", gap: 32, marginBottom: 28 };
+
+  return (
+    <div className="card" style={{ padding: 32, marginTop: 48 }}>
+      <form onSubmit={handleSubmit}>
+        <h3 style={{ marginTop: 0, marginBottom: 24, fontSize: 18, color: "var(--accent)" }}>
+          Anonymous Health Log Entry
+        </h3>
+        <div style={rowStyle}>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              User ID
+            </label>
+            <input
+              className="input"
+              name="user_id"
+              placeholder="User ID"
+              value={form.user_id}
+              onChange={handleChange}
+              required
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Date
+            </label>
+            <input
+              className="input"
+              name="date"
+              type="date"
+              value={form.date}
+              onChange={handleChange}
+              required
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+        </div>
+        <div style={rowStyle}>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Steps
+            </label>
+            <input
+              className="input"
+              name="steps"
+              placeholder="Steps"
+              value={form.steps}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Heart Rate Avg
+            </label>
+            <input
+              className="input"
+              name="heart_rate_avg"
+              placeholder="Heart Rate Avg"
+              value={form.heart_rate_avg}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+        </div>
+        <div style={rowStyle}>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Sleep Hours
+            </label>
+            <input
+              className="input"
+              name="sleep_hours"
+              placeholder="Sleep Hours"
+              value={form.sleep_hours}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Calories Burned
+            </label>
+            <input
+              className="input"
+              name="calories_burned"
+              placeholder="Calories Burned"
+              value={form.calories_burned}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+        </div>
+        <div style={rowStyle}>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Exercise Minutes
+            </label>
+            <input
+              className="input"
+              name="exercise_minutes"
+              placeholder="Exercise Minutes"
+              value={form.exercise_minutes}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+          <div style={groupStyle}>
+            <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+              Stress Level (1-10)
+            </label>
+            <input
+              className="input"
+              name="stress_level"
+              placeholder="Stress Level (1-10)"
+              value={form.stress_level}
+              onChange={handleChange}
+              style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+            />
+          </div>
+        </div>
+        <div style={{ marginBottom: 28 }}>
+          <label className="label" style={{ marginBottom: 8, fontWeight: 500 }}>
+            Notes
+          </label>
+          <input
+            className="input"
+            name="notes"
+            placeholder="Notes"
+            value={form.notes}
+            onChange={handleChange}
+            style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 12, paddingTop: 16 }}>
+          <button
+            className="button"
+            type="submit"
+            style={{
+              flex: 1,
+              padding: "14px 24px",
+              fontSize: 15,
+              fontWeight: 600,
+              background: "var(--accent)",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            Submit Health Log
+          </button>
+          <button
+            type="button"
+            className="button ghost"
+            onClick={() =>
+              setForm({
+                user_id: "",
+                date: "",
+                steps: "",
+                heart_rate_avg: "",
+                sleep_hours: "",
+                calories_burned: "",
+                exercise_minutes: "",
+                stress_level: "",
+                notes: "",
+              })
+            }
+            style={{
+              padding: "14px 24px",
+              fontSize: 15,
+              fontWeight: 600,
+              borderRadius: 8,
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+          >
+            Reset
+          </button>
+        </div>
+        {result && (
+          <pre style={{ marginTop: 16 }}>{JSON.stringify(result, null, 2)}</pre>
+        )}
+      </form>
+    </div>
+  );
+}
 
 export default function DataEntryPage() {
   const [age, setAge] = useState<number | "">("");
@@ -16,6 +243,9 @@ export default function DataEntryPage() {
     const payload = { age, gender, weight, height, goal };
     alert("Submitted profile:\n" + JSON.stringify(payload, null, 2));
   };
+
+  // add marginBottom to each field for separation
+  const fieldStyle = { marginBottom: 24 };
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 16px" }}>
@@ -31,7 +261,7 @@ export default function DataEntryPage() {
               Personal Information
             </h3>
             <div className="row" style={{ gap: 20 }}>
-              <div className="col-6">
+              <div className="col-6" style={fieldStyle}>
                 <label className="label" style={{ marginBottom: 8, display: "block", fontWeight: 500 }}>
                   Age
                 </label>
@@ -45,7 +275,7 @@ export default function DataEntryPage() {
                   style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
                 />
               </div>
-              <div className="col-6">
+              <div className="col-6" style={fieldStyle}>
                 <label className="label" style={{ marginBottom: 8, display: "block", fontWeight: 500 }}>
                   Gender
                 </label>
@@ -69,7 +299,7 @@ export default function DataEntryPage() {
               Body Metrics
             </h3>
             <div className="row" style={{ gap: 20 }}>
-              <div className="col-6">
+              <div className="col-6" style={fieldStyle}>
                 <label className="label" style={{ marginBottom: 8, display: "block", fontWeight: 500 }}>
                   Weight (kg)
                 </label>
@@ -84,7 +314,7 @@ export default function DataEntryPage() {
                   style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
                 />
               </div>
-              <div className="col-6">
+              <div className="col-6" style={fieldStyle}>
                 <label className="label" style={{ marginBottom: 8, display: "block", fontWeight: 500 }}>
                   Height (cm)
                 </label>
@@ -160,6 +390,9 @@ export default function DataEntryPage() {
           </div>
         </form>
       </div>
+
+      {}
+      <HealthLogForm />
     </div>
   );
 }
