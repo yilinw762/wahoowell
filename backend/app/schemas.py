@@ -1,7 +1,8 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict # type: ignore
-from typing import Optional
 from datetime import date, datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
 
 class HealthLogBase(BaseModel):
     user_id: int
@@ -21,29 +22,22 @@ class HealthLogOut(HealthLogBase):
     log_id: int
     created_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True)  # replaces Config.orm_mode = True
-
-from pydantic import BaseModel
-from typing import Optional
+    model_config = ConfigDict(from_attributes=True)
 
 class UserBase(BaseModel):
     email: str
-    name: Optional[str] = None
-    image: Optional[str] = None
+    password_hash: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
 
 class UserCreate(UserBase):
-    provider: Optional[str] = None
-    providerAccountId: Optional[str] = None
-    isNewUser: Optional[bool] = None
+    pass
 
 class User(UserBase):
-    id: int
-    provider: Optional[str] = None
-    providerAccountId: Optional[str] = None
-
-    class Config:
-        orm_mode = True
-    log_id: int
+    user_id: int
     created_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True)  # replaces Config.orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+class PingResponse(BaseModel):
+    message: str

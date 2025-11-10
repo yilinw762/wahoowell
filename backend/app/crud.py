@@ -1,8 +1,8 @@
 """CRUD placeholder. Replace with real DB code when needed."""
 
+from datetime import datetime
 from sqlalchemy.orm import Session
 from . import models, schemas
-from datetime import datetime
 
 
 def get_status():
@@ -10,33 +10,25 @@ def get_status():
 
 
 def upsert_user(db: Session, user_in: schemas.UserCreate):
-    # try find by providerAccountId first, then by email
-    user = None
-    if user_in.provider and user_in.providerAccountId:
-        user = db.query(models.User).filter(
-            models.User.provider == user_in.provider,
-            models.User.provider_account_id == user_in.providerAccountId,
-        ).first()
-    if not user and user_in.email:
-        user = db.query(models.User).filter(models.User.email == user_in.email).first()
+    if not user_in.email:
+        raise ValueError("email is required")
+
+    user = db.query(models.User).filter(models.User.email == user_in.email).first()
+    password = user_in.password_hash or ""
 
     if user:
-        user.name = user_in.name or user.name
-        user.image = user_in.image or user.image
-        user.provider = user_in.provider or user.provider
-        user.provider_account_id = user_in.providerAccountId or user.provider_account_id
-        user.updated_at = datetime.utcnow()
-    else:
-        user = models.User(
-            email=user_in.email,
-            name=user_in.name,
-            image=user_in.image,
-            provider=user_in.provider,
-            provider_account_id=user_in.providerAccountId,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(user)
+        if password and password != user.password_hash:
+            user.password_hash = password
+        db.commit()
+        db.refresh(user)
+        return user
+
+    new_user = models.User(
+        email=user_in.email,
+        password_hash=password,
+        created_at=datetime.utcnow(),
+    )
+    db.add(new_user)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(new_user)
+    return new_user

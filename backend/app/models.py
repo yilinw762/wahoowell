@@ -26,13 +26,9 @@ class HealthLog(Base):
     # user = relationship("User", back_populates="logs")
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "Users"   # match DB capitalization
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=True)
-    image = Column(String, nullable=True)
-    provider = Column(String, nullable=True)
-    provider_account_id = Column(String, nullable=True, index=True)
+    user_id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
