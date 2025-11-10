@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, Float, Date, ForeignKey, DateTime, func, String # type: ignore
 from sqlalchemy.orm import relationship
 from app.database import Base
+from datetime import datetime
 
 class HealthLog(Base):
     __tablename__ = "HealthLogs"
@@ -23,3 +24,11 @@ class HealthLog(Base):
 
     # Optional relationship if Users table exists
     # user = relationship("User", back_populates="logs")
+
+class User(Base):
+    __tablename__ = "Users"   # match DB capitalization
+
+    user_id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

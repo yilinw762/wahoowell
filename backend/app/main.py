@@ -6,17 +6,21 @@ from datetime import date
 from app.database import Base, engine, get_db
 from app.models import HealthLog
 from app.schemas import HealthLogCreate, HealthLogOut
-from sqlalchemy import text
+from .api import health
+from .api import users  # add this import
 
-# Base.metadata.create_all(bind=engine)
+from sqlalchemy import text
+from typing import Optional
 
 app = FastAPI(title="WahooWell API")
+app.include_router(health.router)
+app.include_router(users.router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Or specify ["http://localhost:3000"]
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 @app.get("/")
@@ -24,7 +28,7 @@ def root():
     return {"ok": True, "message": "WahooWell API is running"}
 
 # get a health log by user_id and date
-@app.get("/api/healthlogs", response_model=HealthLogOut | None)
+@app.get("/api/healthlogs", response_model=Optional[HealthLogOut])
 def get_healthlog(user_id: int, date: date, db: Session = Depends(get_db)):
     log = (
         db.query(HealthLog)
@@ -58,6 +62,7 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
 @app.get("/api/healthlogs/all", response_model=list[HealthLogOut])
 def list_healthlogs(db: Session = Depends(get_db)):
     return db.query(HealthLog).all()
+
 
 @app.get("/db-tables")
 def db_tables(db: Session = Depends(get_db)):
