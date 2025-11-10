@@ -19,7 +19,7 @@ export default function Navbar() {
       borderBottom: "1px solid #1a2433", background: "rgba(11,15,20,0.6)"
     }}>
       <div className="container" style={{display:"flex", alignItems:"center", gap:16}}>
-        <div style={{fontWeight:800}}>Health<span style={{color:"var(--accent)"}}>Tracker</span></div>
+        <div style={{fontWeight:800}}>Wahoo<span style={{color:"var(--accent)"}}>Well</span></div>
         <div style={{display:"flex", gap:12, flexWrap:"wrap"}}>
           {links.map(l => (
             <Link key={l.href} href={l.href}>
