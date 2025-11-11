@@ -1,35 +1,58 @@
-// ...existing code...
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions, Session, User } from "next-auth";
+import { JWT } from "next-auth/jwt";
 import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 
-const handler = NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-  ],
-  secret: process.env.NEXTAUTH_SECRET,
-  events: {
-    signIn: async ({ user, account, profile, isNewUser }) => {
-      try {
-        await fetch(`${process.env.BACKEND_URL}/api/users/upsert`, {
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const res = await fetch("http://localhost:8000/api/users/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: user?.email,
-            name: user?.name,
-            image: user?.image,
-            provider: account?.provider,
-            providerAccountId: account?.providerAccountId,
-            isNewUser,
+            email: credentials?.email,
+            password: credentials?.password,
           }),
         });
-      } catch (err) {
-        console.error("Upsert user to backend failed:", err);
+        if (!res.ok) return null;
+        const user = await res.json();
+        return { id: user.user_id, name: user.username, email: credentials?.email };
+      },
+    }),
+  ],
+  session: { strategy: "jwt" },
+  callbacks: {
+    async jwt({ token, user }: { token: JWT; user?: User }) {
+      if (user) {
+        token.id = (user as { id?: string | number }).id;
+        token.name = user.name;
       }
+      return token;
+    },
+    async session({ session, token }: { session: Session; token: JWT }) {
+      if (!session.user) {
+        session.user = {};
+      }
+      (session.user as { id?: string | number; name?: string | null }).id = (token as { id?: string | number }).id;
+      (session.user as { id?: string | number; name?: string | null }).name = (token as { name?: string | null }).name;
+      return session;
     },
   },
-});
-// ...existing code...
+  pages: {
+    signIn: "/login",
+  },
+};
+
+const handler = NextAuth(authOptions);
+
 export { handler as GET, handler as POST };
