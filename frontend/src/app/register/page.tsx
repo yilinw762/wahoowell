@@ -1,31 +1,103 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
-  const onSubmit = (e: React.FormEvent) => {
+  const [form, setForm] = useState({
+    email: "",
+    username: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("Pretend we created your account!");
+    setError("");
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    const res = await fetch("http://localhost:8000/api/users/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: form.email,
+        username: form.username || form.email.split("@")[0],
+        password: form.password,
+      }),
+    });
+    if (res.ok) {
+      router.push("/login");
+    } else {
+      const data = await res.json();
+      setError(data.detail || "Registration failed");
+    }
   };
 
   return (
     <div className="row">
       <div className="col-12">
-        <div className="card" style={{maxWidth:520, margin:"0 auto"}}>
-          <h1 style={{marginTop:0}}>Create Account</h1>
+        <div className="card" style={{ maxWidth: 520, margin: "0 auto" }}>
+          <h1 style={{ marginTop: 0 }}>Create Account</h1>
           <form onSubmit={onSubmit}>
             <label className="label">Email</label>
-            <input className="input" type="email" required />
-            <div style={{height:12}} />
+            <input
+              className="input"
+              type="email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              required
+            />
+            <div style={{ height: 12 }} />
+            <label className="label">Username</label>
+            <input
+              className="input"
+              type="text"
+              name="username"
+              value={form.username}
+              onChange={handleChange}
+              placeholder="Optional"
+            />
+            <div style={{ height: 12 }} />
             <label className="label">Password</label>
-            <input className="input" type="password" required />
-            <div style={{height:12}} />
+            <input
+              className="input"
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              required
+            />
+            <div style={{ height: 12 }} />
             <label className="label">Confirm Password</label>
-            <input className="input" type="password" required />
-            <div style={{height:16}} />
-            <button className="button" type="submit">Register</button>
+            <input
+              className="input"
+              type="password"
+              name="confirmPassword"
+              value={form.confirmPassword}
+              onChange={handleChange}
+              required
+            />
+            <div style={{ height: 16 }} />
+            <button className="button" type="submit">
+              Register
+            </button>
+            {error && (
+              <div style={{ color: "red", marginTop: 12, fontSize: 14 }}>
+                {error}
+              </div>
+            )}
           </form>
-          <p style={{marginTop:12, fontSize:14}}>
+          <p style={{ marginTop: 12, fontSize: 14 }}>
             Already have an account? <Link href="/login">Log in</Link>
           </p>
         </div>

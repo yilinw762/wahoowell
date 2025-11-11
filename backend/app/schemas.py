@@ -31,7 +31,12 @@ class UserBase(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 class UserCreate(UserBase):
-    pass
+    password: str  # make password_hash required for creation
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 
 class User(UserBase):
     user_id: int
