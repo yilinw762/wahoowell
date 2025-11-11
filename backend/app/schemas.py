@@ -27,7 +27,7 @@ class HealthLogOut(HealthLogBase):
 class UserBase(BaseModel):
     email: str
     password_hash: Optional[str] = None
-
+    username: Optional[str] = None
     model_config = ConfigDict(extra="allow")
 
 class UserCreate(UserBase):

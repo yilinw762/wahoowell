@@ -26,9 +26,10 @@ class HealthLog(Base):
     # user = relationship("User", back_populates="logs")
 
 class User(Base):
-    __tablename__ = "Users"   # match DB capitalization
+    __tablename__ = "Users"
 
     user_id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    email = Column(String(255), unique=True, nullable=False)
+    username = Column(String(255), nullable=True)  # username same as google username
+    password_hash = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

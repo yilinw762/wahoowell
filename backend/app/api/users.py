@@ -18,6 +18,7 @@ async def upsert_user(request: Request, payload: schemas.UserCreate, db: Session
         logger.info("UPsert request payload: %s", payload.dict())
         logger.info("Running against DATABASE_URL=%s", os.getenv("DATABASE_URL"))
         user = crud.upsert_user(db, payload)
+        user.username = payload.username  # ensure username is set in response
         logger.info("Upsert OK user_id=%s email=%s", getattr(user, "user_id", None), getattr(user, "email", None))
         return user
     except Exception as e:
