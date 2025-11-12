@@ -7,8 +7,6 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/data-entry", label: "Data Entry" },
   { href: "/community", label: "Community" },
-  { href: "/login", label: "Login" },
-  { href: "/register", label: "Register" },
 ];
 
 export default function Navbar() {
@@ -34,6 +32,26 @@ export default function Navbar() {
                 }}>{l.label}</span>
               </Link>
             ))}
+            {!session?.user && (
+              <>
+                <Link href="/login">
+                  <span style={{
+                    padding:"8px 12px",
+                    borderRadius:10,
+                    background: pathname === "/login" ? "#121821" : "transparent",
+                    border: pathname === "/login" ? "1px solid #1a2433" : "1px solid transparent"
+                  }}>Login</span>
+                </Link>
+                <Link href="/register">
+                  <span style={{
+                    padding:"8px 12px",
+                    borderRadius:10,
+                    background: pathname === "/register" ? "#121821" : "transparent",
+                    border: pathname === "/register" ? "1px solid #1a2433" : "1px solid transparent"
+                  }}>Register</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
         <div style={{display:"flex", alignItems:"center", gap:12}}>
