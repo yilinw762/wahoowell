@@ -125,3 +125,24 @@ class FollowerOut(FollowerBase):
     follower_id: int
     since: datetime
 
+class LeaderboardEntry(BaseModel):
+    user_id: int
+    name: str
+    steps: int
+    rank: int
+
+
+class LeaderboardResponse(BaseModel):
+    entries: List[LeaderboardEntry]
+    current_user_rank: Optional[int] = None
+    has_friends: bool
+class LeaderboardEntryOut(BaseModel):
+    user_id: int
+    username: str
+    steps: int
+    rank: int
+
+
+class LeaderboardResponseOut(BaseModel):
+    entries: List[LeaderboardEntryOut]
+    current_user_entry: Optional[LeaderboardEntryOut] = None

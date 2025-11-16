@@ -24,13 +24,14 @@ from app.schemas import (
 from .api import health
 from .api import users
 from .api import dashboard  
-
+from .api import leaderboard  
 app = FastAPI(title="WahooWell API")
 
 app.include_router(health.router)
 app.include_router(users.router)
 app.include_router(dashboard.router) 
 app.include_router(followers.router)
+app.include_router(leaderboard.router)
 
 
 app.add_middleware(
