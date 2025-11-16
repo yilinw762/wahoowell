@@ -82,4 +82,4 @@ htmlcov/
 
 # ------------------- json
 key.json
-
+backend/cloud_sql_proxy

@@ -6,6 +6,7 @@ from datetime import date
 from app.database import Base, engine, get_db
 from app.models import HealthLog
 from app.schemas import HealthLogCreate, HealthLogOut
+from app.api import community
 from .api import health
 from .api import users  # add this import
 
@@ -15,6 +16,7 @@ from typing import Optional
 app = FastAPI(title="WahooWell API")
 app.include_router(health.router)
 app.include_router(users.router)
+app.include_router(community.router)
 
 app.add_middleware(
     CORSMiddleware,

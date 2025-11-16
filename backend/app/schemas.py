@@ -1,6 +1,6 @@
 # schemas.py
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -46,3 +46,35 @@ class User(UserBase):
 
 class PingResponse(BaseModel):
     message: str
+
+class CommunityPostCreate(BaseModel):
+    user_id: int
+    content: str
+    visibility: Literal["public", "followers", "private"] = "public"
+
+
+class CommunityPostOut(CommunityPostCreate):
+    post_id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostCommentCreate(BaseModel):
+    post_id: int
+    user_id: int
+    content: str
+
+class PostCommentOut(PostCommentCreate):
+    comment_id: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class PostReactionCreate(BaseModel):
+    post_id: int
+    user_id: int
+    reaction_type: str
+
+class ReactionSummary(BaseModel):
+    post_id: int
+    reaction_type: str
+    count: int
