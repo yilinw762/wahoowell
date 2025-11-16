@@ -1,20 +1,22 @@
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Depends, HTTPException #type: ignore
+from fastapi.middleware.cors import CORSMiddleware # type: ignore
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session # type: ignore
 from datetime import date
 from app.database import Base, engine, get_db
 from app.models import HealthLog
 from app.schemas import HealthLogCreate, HealthLogOut
 from .api import health
 from .api import users  # add this import
+from .api import followers
 
-from sqlalchemy import text
+from sqlalchemy import text # type: ignore
 from typing import Optional
 
 app = FastAPI(title="WahooWell API")
 app.include_router(health.router)
 app.include_router(users.router)
+app.include_router(followers.router)
 
 app.add_middleware(
     CORSMiddleware,

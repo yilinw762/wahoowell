@@ -33,3 +33,10 @@ class User(Base):
     username = Column(String(255), nullable=True)  # username same as google username
     password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+class Follower(Base):
+    __tablename__ = "Followers"
+    follower_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
+    follower_user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
+    since = Column(DateTime, server_default=func.now())

@@ -46,3 +46,14 @@ class User(UserBase):
 
 class PingResponse(BaseModel):
     message: str
+
+class FollowerBase(BaseModel):
+    user_id: int
+    follower_user_id: int
+
+class FollowerCreate(FollowerBase):
+    pass
+
+class FollowerOut(FollowerBase):
+    follower_id: int
+    since: datetime

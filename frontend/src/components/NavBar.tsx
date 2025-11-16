@@ -32,6 +32,14 @@ export default function Navbar() {
                 }}>{l.label}</span>
               </Link>
             ))}
+            <Link href="/followers">
+              <span style={{
+                padding:"8px 12px",
+                borderRadius:10,
+                background: pathname === "/followers" ? "#121821" : "transparent",
+                border: pathname === "/followers" ? "1px solid #1a2433" : "1px solid transparent"
+              }}>Followers</span>
+            </Link>
             {!session?.user && (
               <>
                 <Link href="/login">
