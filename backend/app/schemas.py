@@ -51,6 +51,7 @@ class User(UserBase):
 class PingResponse(BaseModel):
     message: str
 
+
 class DashboardSummary(BaseModel):
     steps_today: int
     calories_today: float
@@ -112,3 +113,15 @@ class DataEntryCreate(DataEntryBase):
 
 class DataEntryOut(DataEntryBase):
     user_id: int
+
+class FollowerBase(BaseModel):
+    user_id: int
+    follower_user_id: int
+
+class FollowerCreate(FollowerBase):
+    pass
+
+class FollowerOut(FollowerBase):
+    follower_id: int
+    since: datetime
+

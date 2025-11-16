@@ -35,6 +35,7 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+
 class Goal(Base):
     __tablename__ = "Goals"
 
@@ -56,3 +57,10 @@ class ExerciseType(Base):
     user_id = Column(Integer, nullable=False)
     name = Column(String(255), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+class Follower(Base):
+    __tablename__ = "Followers"
+    follower_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
+    follower_user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
+    since = Column(DateTime, server_default=func.now())
+
