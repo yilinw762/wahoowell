@@ -12,47 +12,42 @@ type Profile = {
   bio?: string;
 };
 
-async function getInternalUserId(email: string): Promise<number | null> {
-  const res = await fetch(`http://localhost:8000/api/users/by-email?email=${encodeURIComponent(email)}`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.user_id;
-}
-
 export default function SuggestedProfiles() {
   const { data: session } = useSession();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [followed, setFollowed] = useState<number[]>([]);
+  const [followingProfiles, setFollowingProfiles] = useState<Profile[]>([]);
   const [error, setError] = useState("");
-  const [internalUserId, setInternalUserId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (session?.user?.email) {
-      getInternalUserId(session.user.email).then(setInternalUserId);
-    }
-  }, [session?.user?.email]);
-
-  useEffect(() => {
-    if (internalUserId) {
-      fetch(`http://localhost:8000/api/profiles/suggested/${internalUserId}`)
+    if (session?.user?.id) {
+      // Fetch suggested profiles
+      fetch(`http://localhost:8000/api/profiles/suggested/${session.user.id}`)
         .then(res => res.json())
         .then(setProfiles);
+      // Fetch currently followed profiles
+      fetch(`http://localhost:8000/api/followers/following_profiles/${session.user.id}`)
+        .then(res => res.json())
+        .then(setFollowingProfiles);
     }
-  }, [internalUserId]);
+  }, [session?.user?.id]);
 
   const handleFollow = async (profileUserId: number) => {
     setError("");
-    if (!internalUserId) return;
-    const res = await fetch("http://localhost:8000/api/followers/add", {
+    const res = await fetch("http://localhost:8000/api/followers/page", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: internalUserId,
+        user_id: session?.user?.id,
         follower_user_id: profileUserId,
       }),
     });
     if (res.ok) {
       setFollowed(prev => [...prev, profileUserId]);
+      // Optionally refresh followingProfiles
+      fetch(`http://localhost:8000/api/followers/following_profiles/${session.user.id}`)
+        .then(res => res.json())
+        .then(setFollowingProfiles);
     } else {
       const data = await res.json();
       setError(data.detail || "Failed to follow user");
@@ -71,6 +66,63 @@ export default function SuggestedProfiles() {
       fontFamily: "Inter, sans-serif",
       margin: "32px 0"
     }}>
+      {/* Currently Following Bar */}
+      {followingProfiles.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            background: "#232b3a",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "6px 16px",
+            fontWeight: 700,
+            fontSize: 15,
+            letterSpacing: 1,
+            marginBottom: 8,
+            display: "inline-block"
+          }}>
+            You're Following
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {followingProfiles.map(fp => (
+              <li key={fp.user_id} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "8px 0", borderBottom: "1px solid #232b3a"
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "#6c47ff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontWeight: 700, fontSize: 14, color: "#fff"
+                }}>
+                  {fp.user_id}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>
+                    User #{fp.user_id}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#aaa" }}>
+                    {fp.bio || <span style={{ color: "#444" }}>No bio yet.</span>}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* Suggested Followers Bar */}
+      <div style={{
+        background: "var(--accent, #6c47ff)",
+        color: "#fff",
+        borderRadius: 8,
+        padding: "6px 16px",
+        fontWeight: 700,
+        fontSize: 15,
+        letterSpacing: 1,
+        marginBottom: 18,
+        display: "inline-block"
+      }}>
+        Suggested Followers
+      </div>
       <h3 style={{ fontWeight: 700, fontSize: 22, marginBottom: 16, letterSpacing: 1 }}>
         Suggested Profiles to Follow
       </h3>

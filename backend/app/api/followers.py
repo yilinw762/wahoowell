@@ -27,12 +27,8 @@ def add_follower(follower: schemas.FollowerCreate, db: Session = Depends(get_db)
 def list_followers(user_id: int, db: Session = Depends(get_db)):
     return db.query(models.Follower).filter_by(user_id=user_id).all()
 
-@router.delete("/remove", status_code=204)
-def remove_follower(user_id: int, follower_user_id: int, db: Session = Depends(get_db)):
-    follower = db.query(models.Follower).filter_by(
-        user_id=user_id, follower_user_id=follower_user_id
-    ).first()
-    if not follower:
-        raise HTTPException(status_code=404, detail="Not following")
-    db.delete(follower)
-    db.commit()
+@router.get("/following_profiles/{user_id}", response_model=list[schemas.ProfileOut])
+def get_following_profiles(user_id: int, db: Session = Depends(get_db)):
+    followed_ids = db.query(models.Follower.follower_user_id).filter(models.Follower.user_id == user_id)
+    profiles = db.query(models.Profile).filter(models.Profile.user_id.in_(followed_ids)).all()
+    return profiles

@@ -26,7 +26,7 @@ export default function FollowersPage() {
   const addFollower = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const res = await fetch("/api/followers/add", {
+    const res = await fetch("/api/followers/page", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
