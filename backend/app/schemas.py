@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict # type: ignore
 
 class HealthLogBase(BaseModel):
     user_id: int
@@ -57,3 +57,15 @@ class FollowerCreate(FollowerBase):
 class FollowerOut(FollowerBase):
     follower_id: int
     since: datetime
+
+class ProfileOut(BaseModel):
+    user_id: int
+    age: int | None = None
+    gender: str | None = None
+    height_cm: int | None = None
+    weight_kg: int | None = None
+    timezone: str | None = None
+    bio: str | None = None
+
+    class Config:
+        orm_mode = True

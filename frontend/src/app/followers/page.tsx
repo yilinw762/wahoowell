@@ -50,8 +50,9 @@ export default function FollowersPage() {
       <h2>Your Followers</h2>
       <ul>
         {followers.map(f => (
-          <li key={f.follower_id}>Follower User ID: {f.follower_user_id} (since {f.since})</li>
-        ))}
+            <li key={f.follower_id}>
+  Follower User ID: {f.follower_user_id} (since {f.since})
+</li>        ))}
       </ul>
       <form onSubmit={addFollower}>
         <input

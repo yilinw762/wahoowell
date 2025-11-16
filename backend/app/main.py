@@ -9,6 +9,7 @@ from app.schemas import HealthLogCreate, HealthLogOut
 from .api import health
 from .api import users  # add this import
 from .api import followers
+from .api import profiles
 
 from sqlalchemy import text # type: ignore
 from typing import Optional
@@ -17,6 +18,7 @@ app = FastAPI(title="WahooWell API")
 app.include_router(health.router)
 app.include_router(users.router)
 app.include_router(followers.router)
+app.include_router(profiles.router)
 
 app.add_middleware(
     CORSMiddleware,

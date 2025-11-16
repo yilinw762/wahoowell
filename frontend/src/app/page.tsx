@@ -1,6 +1,7 @@
 import TopPanel from "@/src/components/TopPanel";
 import StepsChart from "@/src/components/StepsChart";
 import CommunityFeed from "@/src/components/CommunityFeed";
+import SuggestedProfiles from "./profiles/SuggestedProfiles"; 
 
 export default function DashboardPage() {
   return (
@@ -20,6 +21,7 @@ export default function DashboardPage() {
             <hr className="sep" />
             <CommunityFeed />
           </div>
+          <SuggestedProfiles />
         </div>
       </div>
     </>

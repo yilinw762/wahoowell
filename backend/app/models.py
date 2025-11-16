@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Date, ForeignKey, DateTime, func, String # type: ignore
+from sqlalchemy import Column, Integer, SmallInteger, Float, Date, ForeignKey, DateTime, func, String # type: ignore
 from sqlalchemy.orm import relationship
 from app.database import Base
 from datetime import datetime
@@ -40,3 +40,13 @@ class Follower(Base):
     user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
     follower_user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
     since = Column(DateTime, server_default=func.now())
+
+class Profile(Base):
+    __tablename__ = "Profiles"
+    user_id = Column(Integer, ForeignKey("Users.user_id"), primary_key=True)
+    age = Column(SmallInteger)
+    gender = Column(String(16))
+    height_cm = Column(SmallInteger)
+    weight_kg = Column(SmallInteger)
+    timezone = Column(String(64))
+    bio = Column(String(255))

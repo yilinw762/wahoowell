@@ -51,3 +51,10 @@ async def upsert_user(request: Request, payload: schemas.UserCreate, db: Session
         logger.exception("Upsert failed")
         # return details in response for local debugging only
         raise HTTPException(status_code=500, detail={"error": str(e), "type": type(e).__name__})
+
+@router.get("/by-email")
+def get_user_by_email(email: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": user.user_id}
