@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -20,10 +21,13 @@ export default function RegisterPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
     if (form.password !== form.confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
+
+    // 1) Register in FastAPI
     const res = await fetch("http://localhost:8000/api/users/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -33,11 +37,25 @@ export default function RegisterPage() {
         password: form.password,
       }),
     });
-    if (res.ok) {
-      router.push("/login");
-    } else {
-      const data = await res.json();
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       setError(data.detail || "Registration failed");
+      return;
+    }
+
+    // 2) Immediately log in via NextAuth (creates session cookie)
+    const loginRes = await signIn("credentials", {
+      redirect: false,
+      email: form.email,
+      password: form.password,
+    });
+
+    if (loginRes?.ok) {
+      router.push("/"); // or "/data-entry"
+    } else {
+      // fallback: redirect to login page
+      router.push("/login");
     }
   };
 

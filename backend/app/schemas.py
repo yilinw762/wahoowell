@@ -1,8 +1,7 @@
-# schemas.py
 from datetime import date, datetime
-from typing import Optional
-
+from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
+
 
 class HealthLogBase(BaseModel):
     user_id: int
@@ -13,16 +12,19 @@ class HealthLogBase(BaseModel):
     calories_burned: Optional[int] = None
     exercise_minutes: Optional[int] = None
     stress_level: Optional[int] = None
-    notes: Optional[str] = None
+    goal: Optional[str] = None           # ⬅️ was notes
+    main_exercise: Optional[str] = None
+
 
 class HealthLogCreate(HealthLogBase):
     pass
 
+
 class HealthLogOut(HealthLogBase):
     log_id: int
     created_at: Optional[datetime] = None
-
     model_config = ConfigDict(from_attributes=True)
+
 
 class UserBase(BaseModel):
     email: str
@@ -30,8 +32,10 @@ class UserBase(BaseModel):
     username: Optional[str] = None
     model_config = ConfigDict(extra="allow")
 
+
 class UserCreate(UserBase):
-    password: str  # make password_hash required for creation
+    password: str
+
 
 class UserLogin(BaseModel):
     email: str
@@ -41,8 +45,70 @@ class UserLogin(BaseModel):
 class User(UserBase):
     user_id: int
     created_at: Optional[datetime] = None
-
     model_config = ConfigDict(from_attributes=True)
+
 
 class PingResponse(BaseModel):
     message: str
+
+class DashboardSummary(BaseModel):
+    steps_today: int
+    calories_today: float
+    sleep_hours_today: float
+    weekly_steps: List[int]
+    latest_goal_description: Optional[str] = None
+
+
+
+# ---------- Goal & ExerciseType ----------
+
+class GoalBase(BaseModel):
+    user_id: int
+    date: date
+    text: str
+
+
+class GoalCreate(GoalBase):
+    pass
+
+
+class GoalOut(GoalBase):
+    goal_id: int
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExerciseTypeBase(BaseModel):
+    user_id: int
+    name: str
+
+
+class ExerciseTypeCreate(ExerciseTypeBase):
+    pass
+
+
+class ExerciseTypeOut(ExerciseTypeBase):
+    exercise_type_id: int
+    created_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Combined Data Entry ----------
+
+class DataEntryBase(BaseModel):
+    date: date
+    steps: Optional[int] = None
+    heart_rate_avg: Optional[int] = None
+    sleep_hours: Optional[float] = None
+    calories_burned: Optional[int] = None
+    exercise_minutes: Optional[int] = None
+    main_exercise: Optional[str] = None
+    goal: Optional[str] = None
+
+
+class DataEntryCreate(DataEntryBase):
+    user_id: int
+
+
+class DataEntryOut(DataEntryBase):
+    user_id: int

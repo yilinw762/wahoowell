@@ -17,15 +17,17 @@ export default function LoginPage() {
     const formData = new FormData(e.currentTarget);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+
     const res = await signIn("credentials", {
       redirect: false,
       email,
       password,
     });
+
     if (res?.ok) {
-      router.push("/");
+      router.push("/"); // logged in, session cookie set
     } else {
-      setError("Invalid credentials");
+      setError(res?.error || "Invalid credentials");
     }
   };
 
@@ -39,21 +41,39 @@ export default function LoginPage() {
             className="button"
             onClick={onGoogle}
             style={{ marginBottom: 12 }}
-            data-route="/api/auth/signin/google"
           >
             Continue with Google
           </button>
 
-          <div style={{ textAlign: "center", color: "var(--muted)", fontSize: 13, margin: "8px 0" }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--muted)",
+              fontSize: 13,
+              margin: "8px 0",
+            }}
+          >
             or
           </div>
 
           <form onSubmit={onSubmit}>
             <label className="label">Email</label>
-            <input className="input" type="email" name="email" placeholder="you@example.com" required />
+            <input
+              className="input"
+              type="email"
+              name="email"
+              placeholder="you@example.com"
+              required
+            />
             <div style={{ height: 12 }} />
             <label className="label">Password</label>
-            <input className="input" type="password" name="password" placeholder="••••••••" required />
+            <input
+              className="input"
+              type="password"
+              name="password"
+              placeholder="••••••••"
+              required
+            />
             <div style={{ height: 16 }} />
             <button className="button" type="submit">
               Login
