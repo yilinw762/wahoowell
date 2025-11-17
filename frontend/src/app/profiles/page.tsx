@@ -13,16 +13,11 @@ type Profile = {
 
 export default function ProfileForm() {
   const { data: session } = useSession();
-
-  // Try all possible fields
   const userId =
     (session?.user as any)?.user_id ??
     (session?.user as any)?.id ??
     Number((session?.user as any)?.sub) ??
     undefined;
-
-  console.log("SESSION:", session);
-  console.log("userId:", userId);
 
   const [form, setForm] = useState<Profile>({
     age: "",
@@ -36,7 +31,6 @@ export default function ProfileForm() {
   const [result, setResult] = useState<any>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Fetch existing profile data
   useEffect(() => {
     if (!userId) return;
     fetch(`http://127.0.0.1:8000/api/profiles/${userId}`)
@@ -64,21 +58,17 @@ export default function ProfileForm() {
       alert("You must be logged in to update your profile.");
       return;
     }
-
-    // Convert "" to null or numbers before sending
     const payload = {
       ...form,
       age: form.age === "" ? null : Number(form.age),
       height_cm: form.height_cm === "" ? null : Number(form.height_cm),
       weight_kg: form.weight_kg === "" ? null : Number(form.weight_kg),
     };
-
     const res = await fetch(`http://127.0.0.1:8000/api/profiles/${userId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
     const data = await res.json();
     setResult(data);
     setMessage("Profile updated!");
@@ -86,25 +76,147 @@ export default function ProfileForm() {
 
   if (!userId) return <div>You must be logged in to update your profile.</div>;
 
+  const labelStyle = {
+    marginBottom: 8,
+    display: "block",
+    fontWeight: 500,
+  };
+
+  const groupStyle = {
+    display: "flex",
+    flexDirection: "column" as const,
+    flex: 1,
+    minWidth: 0,
+    marginBottom: 0,
+  };
+
+  const rowStyle = {
+    display: "flex",
+    gap: 24,
+    marginBottom: 24,
+  };
+
   return (
-    <div>
-      <h2>Update Profile</h2>
-      <form onSubmit={handleSubmit}>
-        <input name="age" type="number" value={form.age} onChange={handleChange} placeholder="Age" /><br />
-        <select name="gender" value={form.gender} onChange={handleChange}>
-          <option value="">Gender</option>
-          <option value="M">Male</option>
-          <option value="F">Female</option>
-          <option value="Other">Other</option>
-        </select><br />
-        <input name="height_cm" type="number" value={form.height_cm} onChange={handleChange} placeholder="Height (cm)" /><br />
-        <input name="weight_kg" type="number" value={form.weight_kg} onChange={handleChange} placeholder="Weight (kg)" /><br />
-        <input name="timezone" value={form.timezone} onChange={handleChange} placeholder="Timezone" /><br />
-        <textarea name="bio" value={form.bio} onChange={handleChange} placeholder="Bio"></textarea><br />
-        <button type="submit">Save</button>
-      </form>
-      {message && <div style={{ color: "green" }}>{message}</div>}
-      {result && <pre>{JSON.stringify(result, null, 2)}</pre>}
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 16px" }}>
+      <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 32 }}>
+        Profile
+      </h2>
+      <p style={{ color: "#8b92a7", marginBottom: 24, fontSize: 15 }}>
+        Update your profile information.
+      </p>
+      <div className="card" style={{ padding: 32 }}>
+        <form onSubmit={handleSubmit}>
+          <div style={rowStyle}>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Age</label>
+              <input
+                className="input"
+                name="age"
+                type="number"
+                placeholder="Age"
+                value={form.age}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+              />
+            </div>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Gender</label>
+              <select
+                className="input"
+                name="gender"
+                value={form.gender}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+              >
+                <option value="">Select</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div style={rowStyle}>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Height (cm)</label>
+              <input
+                className="input"
+                name="height_cm"
+                type="number"
+                placeholder="Height (cm)"
+                value={form.height_cm}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+              />
+            </div>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Weight (kg)</label>
+              <input
+                className="input"
+                name="weight_kg"
+                type="number"
+                placeholder="Weight (kg)"
+                value={form.weight_kg}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+              />
+            </div>
+          </div>
+          <div style={rowStyle}>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Timezone</label>
+              <input
+                className="input"
+                name="timezone"
+                placeholder="Timezone"
+                value={form.timezone}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15 }}
+              />
+            </div>
+            <div style={groupStyle}>
+              <label style={labelStyle}>Bio</label>
+              <textarea
+                className="input"
+                name="bio"
+                placeholder="Bio"
+                value={form.bio}
+                onChange={handleChange}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 15, minHeight: 60 }}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 8 }}>
+            <button
+              className="button"
+              type="submit"
+              style={{
+                flex: 1,
+                padding: "14px 24px",
+                fontSize: 15,
+                fontWeight: 600,
+                background: "var(--accent)",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              Save
+            </button>
+          </div>
+          {message && (
+            <div
+              style={{
+                marginTop: 16,
+                fontSize: 14,
+                color: "#7dd97c",
+              }}
+            >
+              {message}
+            </div>
+          )}
+        </form>
+      </div>
     </div>
   );
 }
