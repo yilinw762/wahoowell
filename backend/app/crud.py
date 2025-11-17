@@ -24,8 +24,16 @@ def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
     if not user_in.email:
         raise ValueError("email is required")
 
-    username = user_in.username or getattr(user_in, "name", None)
-    password = getattr(user_in, "password_hash", "") or ""
+    username = (
+        (user_in.username or getattr(user_in, "name", None) or "")
+        .strip()
+        or user_in.email.split("@")[0]
+    )
+    password = (
+        getattr(user_in, "password_hash", "")
+        or getattr(user_in, "password", "")
+        or ""
+    )
 
     # 1) Fetch existing by email
     row = db.execute(
@@ -59,6 +67,7 @@ def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
                 WHERE user_id = :user_id
             """
             db.execute(text(sql), params)
+            db.commit()
 
         # Return fresh copy
         updated = db.execute(
@@ -90,6 +99,7 @@ def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
         },
     )
     user_id = result.lastrowid
+    db.commit()
 
     new_row = db.execute(
         text(
@@ -123,6 +133,7 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
             "created_at": now,
         },
     )
+    db.commit()
     post_id = result.lastrowid
 
     row = db.execute(
@@ -201,6 +212,7 @@ def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.P
             "created_at": now,
         },
     )
+    db.commit()
     comment_id = result.lastrowid
 
     row = db.execute(
@@ -245,12 +257,82 @@ def list_comments(db: Session, post_id: int) -> list[schemas.PostCommentOut]:
     return [schemas.PostCommentOut(**row) for row in rows]
 
 
+def delete_post(db: Session, post_id: int, user_id: int) -> str:
+    owner = db.execute(
+        text(
+            """
+            SELECT user_id
+            FROM CommunityPosts
+            WHERE post_id = :post_id
+            """
+        ),
+        {"post_id": post_id},
+    ).mappings().first()
+
+    if not owner:
+        return "not_found"
+    if owner["user_id"] != user_id:
+        return "forbidden"
+
+    db.execute(
+        text("DELETE FROM PostComments WHERE post_id = :post_id"),
+        {"post_id": post_id},
+    )
+    db.execute(
+        text("DELETE FROM PostReactions WHERE post_id = :post_id"),
+        {"post_id": post_id},
+    )
+    db.execute(
+        text("DELETE FROM CommunityPosts WHERE post_id = :post_id"),
+        {"post_id": post_id},
+    )
+    db.commit()
+    return "deleted"
+
+
+def delete_comment(db: Session, post_id: int, comment_id: int, user_id: int) -> str:
+    comment = db.execute(
+        text(
+            """
+            SELECT post_id, user_id
+            FROM PostComments
+            WHERE comment_id = :comment_id
+            """
+        ),
+        {"comment_id": comment_id},
+    ).mappings().first()
+
+    if not comment or comment["post_id"] != post_id:
+        return "not_found"
+    if comment["user_id"] != user_id:
+        return "forbidden"
+
+    db.execute(
+        text("DELETE FROM PostComments WHERE comment_id = :comment_id"),
+        {"comment_id": comment_id},
+    )
+    db.commit()
+    return "deleted"
+
+
 def add_reaction(db: Session, reaction_in: schemas.PostReactionCreate):
     """
-    Old ORM code used merge() with a uniqueness constraint.
-    Here we just INSERT; if you kept the unique index, duplicates will error at DB level.
+    Upsert-style behavior: remove existing reaction from this user, then insert the new one.
     """
     now = datetime.utcnow()
+    db.execute(
+        text(
+            """
+            DELETE FROM PostReactions
+            WHERE post_id = :post_id AND user_id = :user_id
+            """
+        ),
+        {
+            "post_id": reaction_in.post_id,
+            "user_id": reaction_in.user_id,
+        },
+    )
+
     db.execute(
         text(
             """
@@ -265,6 +347,35 @@ def add_reaction(db: Session, reaction_in: schemas.PostReactionCreate):
             "created_at": now,
         },
     )
+    db.commit()
+
+
+def remove_reaction(db: Session, post_id: int, user_id: int):
+    db.execute(
+        text(
+            """
+            DELETE FROM PostReactions
+            WHERE post_id = :post_id AND user_id = :user_id
+            """
+        ),
+        {"post_id": post_id, "user_id": user_id},
+    )
+    db.commit()
+
+
+def get_reaction_for_user(db: Session, post_id: int, user_id: int):
+    row = db.execute(
+        text(
+            """
+            SELECT post_id, user_id, reaction_type, created_at
+            FROM PostReactions
+            WHERE post_id = :post_id AND user_id = :user_id
+            """
+        ),
+        {"post_id": post_id, "user_id": user_id},
+    ).mappings().first()
+
+    return schemas.PostReactionOut(**row) if row else None
 
 
 def reaction_summary(db: Session, post_id: int) -> list[schemas.ReactionSummary]:

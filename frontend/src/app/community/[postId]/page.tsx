@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { use as usePromise, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import api from "@/libs/api";
 import {
@@ -13,19 +14,21 @@ import {
 } from "@/src/components/community/helpers";
 
 interface PostDetailPageProps {
-  params: {
+  params: Promise<{
     postId: string;
-  };
+  }>;
 }
 
 export default function PostDetailPage({ params }: PostDetailPageProps) {
+  const resolvedParams = usePromise(params);
   const { data: session, status } = useSession();
+  const router = useRouter();
   const rawUserId = (session?.user as { id?: number | string } | undefined)?.id;
   const userId = typeof rawUserId === "string" ? Number(rawUserId) : rawUserId;
   const isAuthenticated =
     status === "authenticated" && typeof userId === "number" && !Number.isNaN(userId);
 
-  const postId = Number(params.postId);
+  const postId = Number(resolvedParams.postId);
 
   const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +36,8 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
   const [commentDraft, setCommentDraft] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [pendingReaction, setPendingReaction] = useState<string | null>(null);
+  const [deletingPost, setDeletingPost] = useState(false);
+  const [deletingComments, setDeletingComments] = useState<Record<number, boolean>>({});
 
   const loadPost = useCallback(async () => {
     if (!Number.isFinite(postId)) {
@@ -43,7 +48,10 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
     setLoading(true);
     setError(null);
     try {
-      const hydrated = await fetchPostWithDetails(postId);
+      const hydrated = await fetchPostWithDetails(
+        postId,
+        isAuthenticated ? userId : undefined
+      );
       setPost(hydrated);
     } catch (err) {
       console.error("Failed to load post", err);
@@ -51,7 +59,7 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [postId]);
+  }, [isAuthenticated, postId, userId]);
 
   useEffect(() => {
     loadPost();
@@ -63,44 +71,127 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
       return;
     }
 
+    const isRemoving = post.viewerReaction === reactionType;
+
     setPendingReaction(reactionType);
-    setPost((prev) =>
-      prev
-        ? {
-            ...prev,
-            reactions: {
-              ...prev.reactions,
-              [reactionType]: (prev.reactions[reactionType] ?? 0) + 1,
-            },
-          }
-        : prev
-    );
+    setPost((prev) => {
+      if (!prev) return prev;
+      const updatedCounts = { ...prev.reactions };
+
+      if (isRemoving) {
+        updatedCounts[reactionType] = Math.max(
+          0,
+          (updatedCounts[reactionType] ?? 0) - 1
+        );
+        return {
+          ...prev,
+          reactions: updatedCounts,
+          viewerReaction: null,
+        };
+      }
+
+      updatedCounts[reactionType] = (updatedCounts[reactionType] ?? 0) + 1;
+
+      if (prev.viewerReaction && prev.viewerReaction !== reactionType) {
+        updatedCounts[prev.viewerReaction] = Math.max(
+          0,
+          (updatedCounts[prev.viewerReaction] ?? 0) - 1
+        );
+      }
+
+      return {
+        ...prev,
+        reactions: updatedCounts,
+        viewerReaction: reactionType,
+      };
+    });
 
     try {
-      await api.post(`/api/community/posts/${post.post_id}/reactions`, {
-        post_id: post.post_id,
-        user_id: userId,
-        reaction_type: reactionType,
-      });
+      if (isRemoving) {
+        await api.delete(`/api/community/posts/${post.post_id}/reactions`, {
+          params: { user_id: userId },
+        });
+      } else {
+        await api.post(`/api/community/posts/${post.post_id}/reactions`, {
+          post_id: post.post_id,
+          user_id: userId,
+          reaction_type: reactionType,
+        });
+      }
     } catch (err) {
       console.error("Failed to react", err);
       setError("Reaction failed. Please try again.");
-      setPost((prev) =>
-        prev
-          ? {
-              ...prev,
-              reactions: {
-                ...prev.reactions,
-                [reactionType]: Math.max(0, (prev.reactions[reactionType] ?? 1) - 1),
-              },
-            }
-          : prev
-      );
+
+      try {
+        const fresh = await fetchPostWithDetails(post.post_id, userId);
+        setPost(fresh);
+      } catch (refreshErr) {
+        console.error("Failed to refresh post after reaction error", refreshErr);
+      }
     } finally {
       setPendingReaction(null);
     }
   };
  
+  const handleDeletePost = async () => {
+    if (!post) return;
+    if (!isAuthenticated || !userId) {
+      setError("Sign in to manage posts.");
+      return;
+    }
+
+    const confirmed = typeof window === "undefined" || window.confirm("Delete this post?");
+    if (!confirmed) return;
+
+    setDeletingPost(true);
+    try {
+      await api.delete(`/api/community/posts/${post.post_id}`, {
+        params: { user_id: userId },
+      });
+      setPost(null);
+      router.push("/community");
+    } catch (err) {
+      console.error("Failed to delete post", err);
+      setError("We couldn't delete that post. Try again.");
+    } finally {
+      setDeletingPost(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!post) return;
+    if (!isAuthenticated || !userId) {
+      setError("Sign in to manage comments.");
+      return;
+    }
+
+    const confirmed = typeof window === "undefined" || window.confirm("Delete this comment?");
+    if (!confirmed) return;
+
+    setDeletingComments((prev) => ({ ...prev, [commentId]: true }));
+    const previousComments = post.comments;
+    setPost((prev) =>
+      prev
+        ? {
+            ...prev,
+            comments: prev.comments.filter((comment) => comment.comment_id !== commentId),
+          }
+        : prev
+    );
+
+    try {
+      await api.delete(`/api/community/posts/${post.post_id}/comments/${commentId}`, {
+        params: { user_id: userId },
+      });
+    } catch (err) {
+      console.error("Failed to delete comment", err);
+      setError("We couldn't delete that comment. Try again.");
+      setPost((prev) => (prev ? { ...prev, comments: previousComments } : prev));
+    } finally {
+      setDeletingComments((prev) => ({ ...prev, [commentId]: false }));
+    }
+  };
+
    const handleCommentSubmit = async () => {
      const draft = commentDraft.trim();
      if (!draft || !post) return;
@@ -175,42 +266,66 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
          <div style={{ border: "1px solid #1c2535", borderRadius: 12, padding: 16 }}>
            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
              <div>
-               <strong>{post.username ?? `User ${post.user_id}`}</strong>
+               <strong>{post.username?.trim() || "Community member"}</strong>
                <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 12 }}>
                  {formatRelative(post.created_at)}
                </span>
              </div>
+             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
              <span style={{ fontSize: 12, color: "var(--muted)", textTransform: "capitalize" }}>
                {post.visibility}
              </span>
+             {isAuthenticated && userId === post.user_id && (
+               <button
+                 type="button"
+                 onClick={handleDeletePost}
+                 disabled={deletingPost}
+                 style={{
+                   fontSize: 12,
+                   color: "#fca5a5",
+                   background: "transparent",
+                   border: "none",
+                   cursor: deletingPost ? "progress" : "pointer",
+                 }}
+               >
+                 {deletingPost ? "Deleting..." : "Delete"}
+               </button>
+             )}
+             </div>
            </div>
            <p style={{ margin: "6px 0 12px", lineHeight: 1.5 }}>{post.content}</p>
  
            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-             {REACTION_OPTIONS.map((reaction) => (
-               <button
-                 key={reaction.type}
-                 onClick={() => handleReaction(reaction.type)}
-                 disabled={pendingReaction !== null || !isAuthenticated}
-                 style={{
-                   display: "flex",
-                   gap: 6,
-                   alignItems: "center",
-                   borderRadius: 999,
-                   border: "1px solid #1f2937",
-                   padding: "4px 10px",
-                   background: "#0f172a",
-                   color: "#f1f5f9",
-                   fontSize: 13,
-                   cursor: isAuthenticated ? "pointer" : "not-allowed",
-                   opacity: isAuthenticated ? 1 : 0.6,
-                 }}
-                 title={isAuthenticated ? reaction.label : "Sign in to react"}
-               >
-                 <span>{reaction.emoji}</span>
-                 <span>{post.reactions[reaction.type] ?? 0}</span>
-               </button>
-             ))}
+             {REACTION_OPTIONS.map((reaction) => {
+               const isSelected = post?.viewerReaction === reaction.type;
+               const isDisabled = pendingReaction !== null || !isAuthenticated;
+
+               return (
+                 <button
+                   key={reaction.type}
+                   onClick={() => handleReaction(reaction.type)}
+                   disabled={isDisabled}
+                   style={{
+                     display: "flex",
+                     gap: 6,
+                     alignItems: "center",
+                     borderRadius: 999,
+                     border: isSelected ? "1px solid #2563eb" : "1px solid #1f2937",
+                     padding: "4px 10px",
+                     background: isSelected ? "#1d4ed8" : "#0f172a",
+                     color: isSelected ? "#f8fafc" : "#f1f5f9",
+                     fontSize: 13,
+                     cursor: isAuthenticated ? "pointer" : "not-allowed",
+                     opacity: isAuthenticated ? 1 : 0.6,
+                     boxShadow: isSelected ? "0 0 10px rgba(37, 99, 235, 0.4)" : "none",
+                   }}
+                   title={isAuthenticated ? reaction.label : "Sign in to react"}
+                 >
+                   <span>{reaction.emoji}</span>
+                   <span>{post?.reactions[reaction.type] ?? 0}</span>
+                 </button>
+               );
+             })}
            </div>
  
            <div
@@ -229,17 +344,39 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
              </div>
  
              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-               {post.comments.map((comment) => (
-                 <div key={comment.comment_id} style={{ borderRadius: 8, background: "#0f172a", padding: 10 }}>
-                   <div style={{ fontSize: 13, color: "#c4cadb" }}>
-                     <strong>{comment.username ?? `User ${comment.user_id}`}</strong>
-                     <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-                       {formatRelative(comment.created_at)}
-                     </span>
+               {post.comments.map((comment) => {
+                 const commenterName = comment.username?.trim() || "Community member";
+                 const canDeleteComment = isAuthenticated && comment.user_id === userId;
+                 return (
+                   <div key={comment.comment_id} style={{ borderRadius: 8, background: "#0f172a", padding: 10 }}>
+                     <div style={{ fontSize: 13, color: "#c4cadb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                       <div>
+                         <strong>{commenterName}</strong>
+                         <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
+                           {formatRelative(comment.created_at)}
+                         </span>
+                       </div>
+                       {canDeleteComment && (
+                         <button
+                           type="button"
+                           onClick={() => handleDeleteComment(comment.comment_id)}
+                           disabled={deletingComments[comment.comment_id]}
+                           style={{
+                             fontSize: 11,
+                             color: "#fca5a5",
+                             background: "transparent",
+                             border: "none",
+                             cursor: deletingComments[comment.comment_id] ? "progress" : "pointer",
+                           }}
+                         >
+                           {deletingComments[comment.comment_id] ? "Deleting..." : "Delete"}
+                         </button>
+                       )}
+                     </div>
+                     <p style={{ margin: "4px 0 0", fontSize: 14 }}>{comment.content}</p>
                    </div>
-                   <p style={{ margin: "4px 0 0", fontSize: 14 }}>{comment.content}</p>
-                 </div>
-               ))}
+                 );
+               })}
              </div>
  
              <div style={{ display: "flex", gap: 8 }}>

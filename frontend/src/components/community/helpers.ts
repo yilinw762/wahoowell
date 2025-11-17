@@ -23,9 +23,17 @@ export type ReactionSummary = {
   count: number;
 };
 
+export type PostReaction = {
+  post_id: number;
+  user_id: number;
+  reaction_type: string;
+  created_at: string;
+};
+
 export type FeedPost = CommunityPost & {
   comments: PostComment[];
   reactions: Record<string, number>;
+  viewerReaction?: string | null;
 };
 
 export const REACTION_OPTIONS: { type: string; label: string; emoji: string }[] = [
@@ -80,23 +88,54 @@ export const buildReactionMap = (summary: ReactionSummary[]) => {
   return map;
 };
 
-export const hydratePost = async (post: CommunityPost): Promise<FeedPost> => {
-  const [commentsRes, reactionsRes] = await Promise.all([
+type HydrationOptions = {
+  userId?: number;
+};
+
+const fetchViewerReaction = async (postId: number, userId?: number) => {
+  if (!userId) return null;
+
+  try {
+    const { data } = await api.get<PostReaction | null>(
+      `/api/community/posts/${postId}/reactions/by-user/${userId}`
+    );
+    if (!data) return null;
+    return data.reaction_type;
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "response" in error &&
+      (error as { response?: { status?: number } }).response?.status === 404
+    ) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+export const hydratePost = async (
+  post: CommunityPost,
+  options?: HydrationOptions
+): Promise<FeedPost> => {
+  const [commentsRes, reactionsRes, viewerReaction] = await Promise.all([
     api.get<PostComment[]>(`/api/community/posts/${post.post_id}/comments`),
     api.get<ReactionSummary[]>(`/api/community/posts/${post.post_id}/reactions`),
+    fetchViewerReaction(post.post_id, options?.userId),
   ]);
 
   return {
     ...post,
     comments: commentsRes.data,
     reactions: buildReactionMap(reactionsRes.data),
+    viewerReaction,
   };
 };
 
-export const hydratePosts = (rawPosts: CommunityPost[]) =>
-  Promise.all(rawPosts.map((post) => hydratePost(post)));
+export const hydratePosts = (rawPosts: CommunityPost[], userId?: number) =>
+  Promise.all(rawPosts.map((post) => hydratePost(post, { userId })));
 
-export const fetchPostWithDetails = async (postId: number) => {
+export const fetchPostWithDetails = async (postId: number, userId?: number) => {
   const { data: post } = await api.get<CommunityPost>(`/api/community/posts/${postId}`);
-  return hydratePost(post);
+  return hydratePost(post, { userId });
 };

@@ -1,5 +1,15 @@
+from pathlib import Path
+import sys
+
 from fastapi.testclient import TestClient
-from backend.app.main import app
+
+try:
+    from backend.app.main import app
+except ModuleNotFoundError:  # running from inside backend package
+    backend_root = Path(__file__).resolve().parents[1]
+    if str(backend_root) not in sys.path:
+        sys.path.append(str(backend_root))
+    from app.main import app
 
 
 def test_ping():

@@ -1,7 +1,7 @@
-from fastapi import APIRouter # type: ignore
+from fastapi import APIRouter  # type: ignore
 from .. import schemas
 
-router = APIRouter()
+router = APIRouter(prefix="/api/health", tags=["health"])
 
 
 @router.get("/ping", response_model=schemas.PingResponse)
