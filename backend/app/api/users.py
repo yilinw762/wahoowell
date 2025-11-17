@@ -98,3 +98,27 @@ async def upsert_user(
             status_code=500,
             detail={"error": str(e), "type": type(e).__name__},
         )
+
+@router.post("/login", response_model=schemas.User)
+def login(user_in: schemas.UserLogin, db: Session = Depends(get_db)):
+    row = db.execute(
+        text("""
+            SELECT user_id, email, username, password_hash, created_at
+            FROM Users
+            WHERE email = :email
+        """),
+        {"email": user_in.email},
+    ).mappings().first()
+
+    if not row or not row["password_hash"]:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not bcrypt.checkpw(user_in.password.encode("utf-8"), row["password_hash"].encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return schemas.User(
+        user_id=row["user_id"],
+        email=row["email"],
+        username=row["username"],
+        created_at=row["created_at"],
+    )
