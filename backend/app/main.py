@@ -1,22 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Query # type: ignroe
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from app.database import get_db
 from app.schemas import HealthLogCreate, HealthLogOut
-from app.api import community
-from .api import health
-from .api import users  # users router
+
+# Routers
+from .api import health, users, community, dashboard, leaderboard
 
 app = FastAPI(title="WahooWell API")
+
+# Include routers
 app.include_router(health.router)
 app.include_router(users.router)
 app.include_router(community.router)
+app.include_router(dashboard.router)
+app.include_router(leaderboard.router)
 
 allowed_origins = [
     "http://localhost:3000",
@@ -24,6 +27,7 @@ allowed_origins = [
     "https://localhost:3000",
 ]
 
+# CORS (adjust origins if needed)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,  # Or specify ["http://localhost:3000"]
@@ -32,18 +36,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
     return {"ok": True, "message": "WahooWell API is running"}
 
+
+# ---------------------------------------------------------------------
+# POST /api/healthlogs  (create or update a daily log)
+# ---------------------------------------------------------------------
 @app.post("/api/healthlogs", response_model=HealthLogOut)
 def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
     """
-    Upsert HealthLogs row by (user_id, date) — same behavior as old ORM:
-    - If exists, update fields.
-    - Else, insert.
+    Upsert HealthLogs row by (user_id, date).
+    If exists, update; otherwise insert.
+    Raw SQL only (no ORM models).
     """
-    # 1) Check if a log already exists for user/date
+
+    # entry may or may not have .goal depending on your current schema version
+    goal_text: Optional[str] = getattr(entry, "goal", None)
+    main_exercise: Optional[str] = getattr(entry, "main_exercise", None)
+
+    # 1) Check if a log already exists for this user + date
     existing = db.execute(
         text(
             """
@@ -58,11 +72,8 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
         {"user_id": entry.user_id, "date": entry.date},
     ).mappings().first()
 
-    # Map notes -> goal (per schema vs DB name)
-    goal_text = entry.notes
-
     if existing:
-        # 2) UPDATE path
+        # ------------------ UPDATE ------------------
         db.execute(
             text(
                 """
@@ -88,9 +99,10 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
                 "exercise_minutes": entry.exercise_minutes or 0,
                 "stress_level": entry.stress_level,
                 "goal": goal_text,
-                "main_exercise": getattr(entry, "main_exercise", None),
+                "main_exercise": main_exercise,
             },
         )
+        db.commit()
 
         row = db.execute(
             text(
@@ -105,53 +117,91 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
             ),
             {"log_id": existing["log_id"]},
         ).mappings().first()
-        # Adapt to HealthLogOut (notes ← goal)
-        return HealthLogOut(
-            log_id=row["log_id"],
-            user_id=row["user_id"],
-            date=row["date"],
-            steps=row["steps"],
-            heart_rate_avg=row["heart_rate_avg"],
-            sleep_hours=row["sleep_hours"],
-            calories_burned=int(row["calories_burned"]) if row["calories_burned"] is not None else None,
-            exercise_minutes=row["exercise_minutes"],
-            stress_level=row["stress_level"],
-            notes=row["goal"],
-            created_at=row["created_at"],
-        )
 
-    # 3) INSERT path
-    now = datetime.utcnow()
-    result = db.execute(
-        text(
-            """
-            INSERT INTO HealthLogs (
-                user_id, date, steps, heart_rate_avg, sleep_hours,
-                calories_burned, exercise_minutes, stress_level,
-                goal, created_at, main_exercise
-            )
-            VALUES (
-                :user_id, :date, :steps, :heart_rate_avg, :sleep_hours,
-                :calories_burned, :exercise_minutes, :stress_level,
-                :goal, :created_at, :main_exercise
-            )
-            """
-        ),
-        {
-            "user_id": entry.user_id,
-            "date": entry.date,
-            "steps": entry.steps or 0,
-            "heart_rate_avg": entry.heart_rate_avg,
-            "sleep_hours": entry.sleep_hours,
-            "calories_burned": entry.calories_burned,
-            "exercise_minutes": entry.exercise_minutes or 0,
-            "stress_level": entry.stress_level,
-            "goal": goal_text,
-            "created_at": now,
-            "main_exercise": getattr(entry, "main_exercise", None),
-        },
+    else:
+        # ------------------ INSERT ------------------
+        now = datetime.utcnow()
+        result = db.execute(
+            text(
+                """
+                INSERT INTO HealthLogs (
+                    user_id, date, steps, heart_rate_avg, sleep_hours,
+                    calories_burned, exercise_minutes, stress_level,
+                    goal, created_at, main_exercise
+                )
+                VALUES (
+                    :user_id, :date, :steps, :heart_rate_avg, :sleep_hours,
+                    :calories_burned, :exercise_minutes, :stress_level,
+                    :goal, :created_at, :main_exercise
+                )
+                """
+            ),
+            {
+                "user_id": entry.user_id,
+                "date": entry.date,
+                "steps": entry.steps or 0,
+                "heart_rate_avg": entry.heart_rate_avg,
+                "sleep_hours": entry.sleep_hours,
+                "calories_burned": entry.calories_burned,
+                "exercise_minutes": entry.exercise_minutes or 0,
+                "stress_level": entry.stress_level,
+                "goal": goal_text,
+                "created_at": now,
+                "main_exercise": main_exercise,
+            },
+        )
+        db.commit()
+
+        log_id = result.lastrowid
+
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    log_id, user_id, date, steps, heart_rate_avg, sleep_hours,
+                    calories_burned, exercise_minutes, stress_level,
+                    goal, created_at, main_exercise
+                FROM HealthLogs
+                WHERE log_id = :log_id
+                """
+            ),
+            {"log_id": log_id},
+        ).mappings().first()
+
+    # Map DB row → HealthLogOut
+    return HealthLogOut(
+        log_id=row["log_id"],
+        user_id=row["user_id"],
+        date=row["date"],
+        steps=row["steps"],
+        heart_rate_avg=row["heart_rate_avg"],
+        sleep_hours=row["sleep_hours"],
+        calories_burned=int(row["calories_burned"])
+        if row["calories_burned"] is not None
+        else None,
+        exercise_minutes=row["exercise_minutes"],
+        stress_level=row["stress_level"],
+        goal=row["goal"],
+        created_at=row["created_at"],
+        main_exercise=row["main_exercise"],
     )
-    log_id = result.lastrowid
+
+
+# ---------------------------------------------------------------------
+# GET /api/healthlogs  (single day, used to pre-fill form)
+# ---------------------------------------------------------------------
+@app.get("/api/healthlogs")
+def get_healthlog_by_day(
+    user_id: int,
+    date: date,
+    db: Session = Depends(get_db),
+):
+    """
+    Called like:
+      GET /api/healthlogs?user_id=19&date=2025-11-17
+
+    If there is no log for that day, returns `null` with HTTP 200.
+    """
 
     row = db.execute(
         text(
@@ -161,11 +211,16 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
                 calories_burned, exercise_minutes, stress_level,
                 goal, created_at, main_exercise
             FROM HealthLogs
-            WHERE log_id = :log_id
+            WHERE user_id = :user_id AND date = :date
+            ORDER BY created_at DESC
+            LIMIT 1
             """
         ),
-        {"log_id": log_id},
+        {"user_id": user_id, "date": date},
     ).mappings().first()
+
+    if not row:
+        return None
 
     return HealthLogOut(
         log_id=row["log_id"],
@@ -174,13 +229,20 @@ def upsert_healthlog(entry: HealthLogCreate, db: Session = Depends(get_db)):
         steps=row["steps"],
         heart_rate_avg=row["heart_rate_avg"],
         sleep_hours=row["sleep_hours"],
-        calories_burned=int(row["calories_burned"]) if row["calories_burned"] is not None else None,
+        calories_burned=int(row["calories_burned"])
+        if row["calories_burned"] is not None
+        else None,
         exercise_minutes=row["exercise_minutes"],
         stress_level=row["stress_level"],
-        notes=row["goal"],
+        goal=row["goal"],
         created_at=row["created_at"],
+        main_exercise=row["main_exercise"],
     )
 
+
+# ---------------------------------------------------------------------
+# GET /api/healthlogs/all  (debug helper)
+# ---------------------------------------------------------------------
 @app.get("/api/healthlogs/all", response_model=List[HealthLogOut])
 def list_healthlogs(db: Session = Depends(get_db)):
     rows = db.execute(
@@ -204,51 +266,20 @@ def list_healthlogs(db: Session = Depends(get_db)):
             steps=row["steps"],
             heart_rate_avg=row["heart_rate_avg"],
             sleep_hours=row["sleep_hours"],
-            calories_burned=int(row["calories_burned"]) if row["calories_burned"] is not None else None,
+            calories_burned=int(row["calories_burned"])
+            if row["calories_burned"] is not None
+            else None,
             exercise_minutes=row["exercise_minutes"],
             stress_level=row["stress_level"],
-            notes=row["goal"],
+            goal=row["goal"],
             created_at=row["created_at"],
+            main_exercise=row["main_exercise"],
         )
         for row in rows
     ]
+
 
 @app.get("/db-tables")
 def db_tables(db: Session = Depends(get_db)):
     rows = db.execute(text("SHOW TABLES")).all()
     return {"tables": [r[0] for r in rows]}
-
-@app.get("/api/healthlogs", response_model=Optional[HealthLogOut])
-def get_healthlog(
-    user_id: int = Query(...),
-    date: date = Query(...),
-    db: Session = Depends(get_db)
-):
-    row = db.execute(
-        text(
-            """
-            SELECT
-                log_id, user_id, date, steps, heart_rate_avg, sleep_hours,
-                calories_burned, exercise_minutes, stress_level,
-                goal, created_at, main_exercise
-            FROM HealthLogs
-            WHERE user_id = :user_id AND date = :date
-            """
-        ),
-        {"user_id": user_id, "date": date},
-    ).mappings().first()
-    if not row:
-        return None
-    return HealthLogOut(
-        log_id=row["log_id"],
-        user_id=row["user_id"],
-        date=row["date"],
-        steps=row["steps"],
-        heart_rate_avg=row["heart_rate_avg"],
-        sleep_hours=row["sleep_hours"],
-        calories_burned=int(row["calories_burned"]) if row["calories_burned"] is not None else None,
-        exercise_minutes=row["exercise_minutes"],
-        stress_level=row["stress_level"],
-        notes=row["goal"],
-        created_at=row["created_at"],
-    )

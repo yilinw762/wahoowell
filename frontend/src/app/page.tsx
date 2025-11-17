@@ -22,7 +22,7 @@ const initialDashboard: DashboardData = {
   latest_goal_description: null,
 };
 
-// ---- Leaderboard types (match these with your backend JSON) ----
+// ---- Leaderboard types (match backend JSON) ----
 type LeaderboardEntry = {
   user_id: number;
   username: string;
@@ -81,7 +81,7 @@ export default function DashboardPage() {
       setLeaderboardError(null);
       try {
         const res = await fetch(
-          `http://127.0.0.1:8000/api/followers/leaderboard/${userId}`
+          `http://127.0.0.1:8000/api/leaderboard/${userId}`
         );
         if (!res.ok) {
           throw new Error("Failed to fetch leaderboard");
@@ -146,7 +146,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Right side: Goal + Leaderboard */}
-        <div className="col-4" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div
+          className="col-4"
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+        >
           {/* Recent goal card */}
           <div className="card" style={{ padding: 24 }}>
             <h3 style={{ marginTop: 0, marginBottom: 8 }}>Recent goal</h3>
@@ -243,7 +246,9 @@ export default function DashboardPage() {
                           }
                         >
                           <td style={{ padding: "4px 0" }}>#{entry.rank}</td>
-                          <td style={{ padding: "4px 0" }}>{entry.username}</td>
+                          <td style={{ padding: "4px 0" }}>
+                            {entry.username}
+                          </td>
                           <td
                             style={{
                               padding: "4px 0",
@@ -256,7 +261,7 @@ export default function DashboardPage() {
                         </tr>
                       ))}
 
-                      {showMyRowSeparately && (
+                      {showMyRowSeparately && me && (
                         <>
                           {/* separator row */}
                           <tr>
@@ -271,10 +276,10 @@ export default function DashboardPage() {
                           </tr>
 
                           {/* current user row */}
-                          <tr key={me!.user_id} style={highlightStyle}>
-                            <td style={{ padding: "4px 0" }}>#{me!.rank}</td>
+                          <tr key={me.user_id} style={highlightStyle}>
+                            <td style={{ padding: "4px 0" }}>#{me.rank}</td>
                             <td style={{ padding: "4px 0" }}>
-                              {me!.username || "You"}
+                              {me.username || "You"}
                             </td>
                             <td
                               style={{
@@ -283,7 +288,7 @@ export default function DashboardPage() {
                                 fontVariantNumeric: "tabular-nums",
                               }}
                             >
-                              {me!.steps.toLocaleString()}
+                              {me.steps.toLocaleString()}
                             </td>
                           </tr>
                         </>
