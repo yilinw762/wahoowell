@@ -128,9 +128,15 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
     row = db.execute(
         text(
             """
-            SELECT post_id, user_id, content, visibility, created_at
-            FROM CommunityPosts
-            WHERE post_id = :post_id
+            SELECT cp.post_id,
+                   cp.user_id,
+                   u.username,
+                   cp.content,
+                   cp.visibility,
+                   cp.created_at
+            FROM CommunityPosts AS cp
+            LEFT JOIN Users AS u ON u.user_id = cp.user_id
+            WHERE cp.post_id = :post_id
             """
         ),
         {"post_id": post_id},
@@ -143,13 +149,40 @@ def list_posts(db: Session) -> list[schemas.CommunityPostOut]:
     rows = db.execute(
         text(
             """
-            SELECT post_id, user_id, content, visibility, created_at
-            FROM CommunityPosts
-            ORDER BY created_at DESC
+            SELECT cp.post_id,
+                   cp.user_id,
+                   u.username,
+                   cp.content,
+                   cp.visibility,
+                   cp.created_at
+            FROM CommunityPosts AS cp
+            LEFT JOIN Users AS u ON u.user_id = cp.user_id
+            ORDER BY cp.created_at DESC
             """
         )
     ).mappings().all()
     return [schemas.CommunityPostOut(**row) for row in rows]
+
+
+def get_post(db: Session, post_id: int) -> schemas.CommunityPostOut | None:
+    row = db.execute(
+        text(
+            """
+            SELECT cp.post_id,
+                   cp.user_id,
+                   u.username,
+                   cp.content,
+                   cp.visibility,
+                   cp.created_at
+            FROM CommunityPosts AS cp
+            LEFT JOIN Users AS u ON u.user_id = cp.user_id
+            WHERE cp.post_id = :post_id
+            """
+        ),
+        {"post_id": post_id},
+    ).mappings().first()
+
+    return schemas.CommunityPostOut(**row) if row else None
 
 
 def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.PostCommentOut:
@@ -173,9 +206,15 @@ def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.P
     row = db.execute(
         text(
             """
-            SELECT comment_id, post_id, user_id, content, created_at
-            FROM PostComments
-            WHERE comment_id = :comment_id
+            SELECT pc.comment_id,
+                   pc.post_id,
+                   pc.user_id,
+                   u.username,
+                   pc.content,
+                   pc.created_at
+            FROM PostComments AS pc
+            LEFT JOIN Users AS u ON u.user_id = pc.user_id
+            WHERE pc.comment_id = :comment_id
             """
         ),
         {"comment_id": comment_id},
@@ -188,10 +227,16 @@ def list_comments(db: Session, post_id: int) -> list[schemas.PostCommentOut]:
     rows = db.execute(
         text(
             """
-            SELECT comment_id, post_id, user_id, content, created_at
-            FROM PostComments
-            WHERE post_id = :post_id
-            ORDER BY created_at ASC
+            SELECT pc.comment_id,
+                   pc.post_id,
+                   pc.user_id,
+                   u.username,
+                   pc.content,
+                   pc.created_at
+            FROM PostComments AS pc
+            LEFT JOIN Users AS u ON u.user_id = pc.user_id
+            WHERE pc.post_id = :post_id
+            ORDER BY pc.created_at ASC
             """
         ),
         {"post_id": post_id},

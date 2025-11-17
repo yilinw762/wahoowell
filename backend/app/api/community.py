@@ -1,5 +1,5 @@
 # app/api/community.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import crud, schemas
@@ -20,6 +20,14 @@ def create_post(
     return crud.create_post(db, post_in)
 
 
+@router.get("/posts/{post_id}", response_model=schemas.CommunityPostOut)
+def get_post(post_id: int, db: Session = Depends(get_db)):
+    post = crud.get_post(db, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
+
+
 @router.get("/posts/{post_id}/comments", response_model=list[schemas.PostCommentOut])
 def get_comments(post_id: int, db: Session = Depends(get_db)):
     return crud.list_comments(db, post_id)
@@ -31,8 +39,8 @@ def create_comment(
     comment_in: schemas.PostCommentCreate,
     db: Session = Depends(get_db),
 ):
-    # keep behavior: body includes post_id already
-    return crud.add_comment(db, comment_in)
+    payload = comment_in.model_copy(update={"post_id": post_id})
+    return crud.add_comment(db, payload)
 
 
 @router.post("/posts/{post_id}/reactions", status_code=204)
@@ -41,7 +49,8 @@ def create_reaction(
     reaction_in: schemas.PostReactionCreate,
     db: Session = Depends(get_db),
 ):
-    crud.add_reaction(db, reaction_in)
+    payload = reaction_in.model_copy(update={"post_id": post_id})
+    crud.add_reaction(db, payload)
     return {}
 
 

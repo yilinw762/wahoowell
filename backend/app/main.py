@@ -18,11 +18,18 @@ app.include_router(health.router)
 app.include_router(users.router)
 app.include_router(community.router)
 
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or specify ["http://localhost:3000"]
+    allow_origins=allowed_origins,  # Or specify ["http://localhost:3000"]
     allow_credentials=True,
     allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
