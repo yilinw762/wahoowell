@@ -11,13 +11,13 @@ from app import schemas
 router = APIRouter(prefix="/api/leaderboard", tags=["leaderboard"])
 
 
-@router.get("/{user_id}", response_model=schemas.LeaderboardResponse)
+@router.get("/{user_id}", response_model=schemas.LeaderboardResponseOut)
 def get_leaderboard(user_id: int, db: Session = Depends(get_db)):
     """
     Returns today's leaderboard for the user and the users they follow.
 
     - If a friend has no health log for today => steps = 0.
-    - Sorted by steps desc, then name.
+    - Sorted by steps desc, then username.
     """
 
     today = date.today()
@@ -35,15 +35,13 @@ def get_leaderboard(user_id: int, db: Session = Depends(get_db)):
     ).mappings().all()
     friend_ids = [row["follower_user_id"] for row in follow_rows]
 
-    has_friends = len(friend_ids) > 0
-
     # 2) Build the set of users in the leaderboard: me + my friends
     user_ids = [user_id] + friend_ids
     user_ids = list(dict.fromkeys(user_ids))  # dedupe, preserve order
 
     if not user_ids:
-        return schemas.LeaderboardResponse(
-            entries=[], current_user_rank=None, has_friends=False
+        return schemas.LeaderboardResponseOut(
+            entries=[], current_user_entry=None
         )
 
     # Helper to build IN clause safely
@@ -71,43 +69,42 @@ def get_leaderboard(user_id: int, db: Session = Depends(get_db)):
     # 4) Get display names (username or email)
     users_sql = text(
         f"""
-        SELECT user_id, COALESCE(username, email) AS name
+        SELECT user_id, COALESCE(username, email) AS username
         FROM Users
         WHERE user_id IN ({placeholders})
         """
     )
     users_rows = db.execute(users_sql, id_params).mappings().all()
-    name_by_id = {row["user_id"]: row["name"] for row in users_rows}
+    username_by_id = {row["user_id"]: row["username"] for row in users_rows}
 
     # 5) Build and sort entries
     raw_entries = [
         {
             "user_id": uid,
-            "name": name_by_id.get(uid, f"User {uid}"),
+            "username": username_by_id.get(uid, f"User {uid}"),
             "steps": steps_by_user[uid],
         }
         for uid in user_ids
     ]
 
-    raw_entries.sort(key=lambda e: (-e["steps"], e["name"]))
+    raw_entries.sort(key=lambda e: (-e["steps"], e["username"]))
 
-    leaderboard_entries: list[schemas.LeaderboardEntry] = []
-    current_user_rank = None
+    leaderboard_entries: list[schemas.LeaderboardEntryOut] = []
+    current_user_entry: schemas.LeaderboardEntryOut | None = None
 
     for idx, e in enumerate(raw_entries):
         rank = idx + 1
-        lb_entry = schemas.LeaderboardEntry(
+        lb_entry = schemas.LeaderboardEntryOut(
             user_id=e["user_id"],
-            name=e["name"],
+            username=e["username"],
             steps=e["steps"],
             rank=rank,
         )
         leaderboard_entries.append(lb_entry)
         if e["user_id"] == user_id:
-            current_user_rank = rank
+            current_user_entry = lb_entry
 
-    return schemas.LeaderboardResponse(
+    return schemas.LeaderboardResponseOut(
         entries=leaderboard_entries,
-        current_user_rank=current_user_rank,
-        has_friends=has_friends,
+        current_user_entry=current_user_entry,
     )

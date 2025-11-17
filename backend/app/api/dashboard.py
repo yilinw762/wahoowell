@@ -40,9 +40,15 @@ def get_dashboard_summary(user_id: int, db: Session = Depends(database.get_db)):
 
     steps_today = int(today_row["steps"] or 0) if today_row else 0
     calories_today = (
-        int(today_row["calories_burned"] or 0) if today_row and today_row["calories_burned"] is not None else 0
+        int(today_row["calories_burned"] or 0)
+        if today_row and today_row["calories_burned"] is not None
+        else 0
     )
-    sleep_hours_today = float(today_row["sleep_hours"]) if today_row and today_row["sleep_hours"] is not None else 0.0
+    sleep_hours_today = (
+        float(today_row["sleep_hours"])
+        if today_row and today_row["sleep_hours"] is not None
+        else 0.0
+    )
 
     # 2) Weekly steps
     weekly_rows = db.execute(
@@ -57,9 +63,7 @@ def get_dashboard_summary(user_id: int, db: Session = Depends(database.get_db)):
         {"user_id": user_id, "start_date": start_date, "end_date": today},
     ).mappings().all()
 
-    steps_by_date = {
-        row["date"]: int(row["steps"] or 0) for row in weekly_rows
-    }
+    steps_by_date = {row["date"]: int(row["steps"] or 0) for row in weekly_rows}
 
     weekly_steps = [
         steps_by_date.get(start_date + timedelta(days=i), 0) for i in range(7)
@@ -83,7 +87,7 @@ def get_dashboard_summary(user_id: int, db: Session = Depends(database.get_db)):
 
     latest_goal_description = None
     if goal_row:
-        parts = []
+        parts: list[str] = []
         if goal_row["description"]:
             parts.append(goal_row["description"])
         else:
