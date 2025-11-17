@@ -16,8 +16,18 @@ class HealthLogBase(BaseModel):
     main_exercise: Optional[str] = None
 
 
-class HealthLogCreate(HealthLogBase):
-    pass
+class HealthLogCreate(BaseModel):
+    user_id: int
+    date: date
+    steps: Optional[int] = 0
+    heart_rate_avg: Optional[int] = None
+    sleep_hours: Optional[float] = None
+    calories_burned: Optional[int] = None
+    exercise_minutes: Optional[int] = 0
+    stress_level: Optional[int] = None
+
+    notes: Optional[str] = None   # ← ADD THIS
+    main_exercise: Optional[str] = None
 
 
 class HealthLogOut(HealthLogBase):

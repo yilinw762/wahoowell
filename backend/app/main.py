@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Query # type: ignroe
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -209,3 +210,38 @@ def list_healthlogs(db: Session = Depends(get_db)):
 def db_tables(db: Session = Depends(get_db)):
     rows = db.execute(text("SHOW TABLES")).all()
     return {"tables": [r[0] for r in rows]}
+
+@app.get("/api/healthlogs", response_model=Optional[HealthLogOut])
+def get_healthlog(
+    user_id: int = Query(...),
+    date: date = Query(...),
+    db: Session = Depends(get_db)
+):
+    row = db.execute(
+        text(
+            """
+            SELECT
+                log_id, user_id, date, steps, heart_rate_avg, sleep_hours,
+                calories_burned, exercise_minutes, stress_level,
+                goal, created_at, main_exercise
+            FROM HealthLogs
+            WHERE user_id = :user_id AND date = :date
+            """
+        ),
+        {"user_id": user_id, "date": date},
+    ).mappings().first()
+    if not row:
+        return None
+    return HealthLogOut(
+        log_id=row["log_id"],
+        user_id=row["user_id"],
+        date=row["date"],
+        steps=row["steps"],
+        heart_rate_avg=row["heart_rate_avg"],
+        sleep_hours=row["sleep_hours"],
+        calories_burned=int(row["calories_burned"]) if row["calories_burned"] is not None else None,
+        exercise_minutes=row["exercise_minutes"],
+        stress_level=row["stress_level"],
+        notes=row["goal"],
+        created_at=row["created_at"],
+    )
