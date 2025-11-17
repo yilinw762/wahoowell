@@ -2,9 +2,10 @@
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from datetime import date, timedelta
 
-from app import models, database, schemas
+from app import database, schemas
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -16,109 +17,86 @@ def get_dashboard_summary(user_id: int, db: Session = Depends(database.get_db)):
       - steps_today
       - calories_today
       - sleep_hours_today
-      - weekly_steps (last 7 days)
-      - latest_goal_description (daily goal text, then fallback to Goals)
+      - weekly_steps (last 7 days, oldest → newest)
+      - latest_goal_description
     """
 
     today = date.today()
-    week_start = today - timedelta(days=6)
+    start_date = today - timedelta(days=6)
 
-    # ---------- Today's metrics ----------
-    today_logs = (
-        db.query(models.HealthLog)
-        .filter(
-            models.HealthLog.user_id == user_id,
-            models.HealthLog.date == today,
-        )
-        .all()
+    # 1) Today's health summary
+    today_row = db.execute(
+        text(
+            """
+            SELECT steps, calories_burned, sleep_hours
+            FROM HealthLogs
+            WHERE user_id = :user_id AND date = :today
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"user_id": user_id, "today": today},
+    ).mappings().first()
+
+    steps_today = int(today_row["steps"] or 0) if today_row else 0
+    calories_today = (
+        int(today_row["calories_burned"] or 0) if today_row and today_row["calories_burned"] is not None else 0
     )
+    sleep_hours_today = float(today_row["sleep_hours"]) if today_row and today_row["sleep_hours"] is not None else 0.0
 
-    if today_logs:
-        steps_today = sum(int(log.steps or 0) for log in today_logs)
-        calories_today = float(sum(log.calories_burned or 0 for log in today_logs))
+    # 2) Weekly steps
+    weekly_rows = db.execute(
+        text(
+            """
+            SELECT date, steps
+            FROM HealthLogs
+            WHERE user_id = :user_id
+              AND date BETWEEN :start_date AND :end_date
+            """
+        ),
+        {"user_id": user_id, "start_date": start_date, "end_date": today},
+    ).mappings().all()
 
-        sleep_values = [
-            float(log.sleep_hours)
-            for log in today_logs
-            if log.sleep_hours is not None
-        ]
-        sleep_hours_today = (
-            sum(sleep_values) / len(sleep_values) if sleep_values else 0.0
-        )
-    else:
-        steps_today = 0
-        calories_today = 0.0
-        sleep_hours_today = 0.0
+    steps_by_date = {
+        row["date"]: int(row["steps"] or 0) for row in weekly_rows
+    }
 
-    # ---------- Weekly steps (last 7 days) ----------
-    week_logs = (
-        db.query(models.HealthLog)
-        .filter(
-            models.HealthLog.user_id == user_id,
-            models.HealthLog.date >= week_start,
-            models.HealthLog.date <= today,
-        )
-        .all()
-    )
+    weekly_steps = [
+        steps_by_date.get(start_date + timedelta(days=i), 0) for i in range(7)
+    ]
 
-    steps_by_date: dict[date, int] = {}
-    for log in week_logs:
-        d = log.date
-        steps_by_date[d] = steps_by_date.get(d, 0) + int(log.steps or 0)
+    # 3) Latest goal description
+    goal_row = db.execute(
+        text(
+            """
+            SELECT metric, target_value, description, start_date, end_date, recurrence
+            FROM Goals
+            WHERE user_id = :user_id
+            ORDER BY
+              COALESCE(end_date, start_date, CURRENT_DATE) DESC,
+              goal_id DESC
+            LIMIT 1
+            """
+        ),
+        {"user_id": user_id},
+    ).mappings().first()
 
-    weekly_steps: list[int] = []
-    for offset in range(7):
-        d = week_start + timedelta(days=offset)
-        weekly_steps.append(steps_by_date.get(d, 0))
+    latest_goal_description = None
+    if goal_row:
+        parts = []
+        if goal_row["description"]:
+            parts.append(goal_row["description"])
+        else:
+            parts.append(f"{goal_row['metric']} target {goal_row['target_value']}")
 
-    # ---------- Latest goal description ----------
-    latest_goal_description: str | None = None
+        if goal_row["recurrence"] and goal_row["recurrence"] != "none":
+            parts.append(f"({goal_row['recurrence']})")
+        if goal_row["start_date"]:
+            parts.append(f"from {goal_row['start_date'].isoformat()}")
+        if goal_row["end_date"]:
+            parts.append(f"to {goal_row['end_date'].isoformat()}")
 
-    # 1) Most recent HealthLog.goal for this user (what you type on Data Entry)
-    latest_log_with_goal = (
-        db.query(models.HealthLog)
-        .filter(
-            models.HealthLog.user_id == user_id,
-            models.HealthLog.goal.isnot(None),
-            models.HealthLog.goal != "",
-        )
-        .order_by(models.HealthLog.date.desc(), models.HealthLog.created_at.desc())
-        .first()
-    )
-
-    if latest_log_with_goal and latest_log_with_goal.goal:
-        latest_goal_description = latest_log_with_goal.goal
-    else:
-        # 2) Fallback: latest long-term goal from Goals table
-        latest_goal = (
-            db.query(models.Goal)
-            .filter(models.Goal.user_id == user_id)
-            .order_by(models.Goal.start_date.desc())
-            .first()
-        )
-
-        if latest_goal:
-            # Prefer explicit description if present
-            if latest_goal.description:
-                latest_goal_description = latest_goal.description
-            else:
-                # Build a compact text like "steps 10000 (weekly) from 2025-10-20 to 2025-10-27"
-                parts: list[str] = []
-                if latest_goal.metric:
-                    parts.append(latest_goal.metric)
-                if latest_goal.target_value is not None:
-                    val = float(latest_goal.target_value)
-                    parts.append(
-                        str(int(val)) if val.is_integer() else str(val)
-                    )
-                if latest_goal.recurrence and latest_goal.recurrence != "none":
-                    parts.append(f"({latest_goal.recurrence})")
-                if latest_goal.start_date:
-                    parts.append(f"from {latest_goal.start_date.isoformat()}")
-                if latest_goal.end_date:
-                    parts.append(f"to {latest_goal.end_date.isoformat()}")
-
-                latest_goal_description = " ".join(parts) or None
+        latest_goal_description = " ".join(parts) or None
 
     return schemas.DashboardSummary(
         steps_today=steps_today,

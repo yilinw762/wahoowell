@@ -1,6 +1,9 @@
+# app/crud.py
+"""CRUD layer using raw SQL (no ORM models)."""
+
 from datetime import datetime
-from sqlalchemy.orm import Session # type: ignore
-from sqlalchemy import text # type: ignore
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from . import schemas
 
@@ -9,25 +12,26 @@ def get_status():
     return {"status": "ok"}
 
 
-# -------- USERS --------
+# ---------- USERS ----------
 
 def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
     """
-    Upsert user by email.
-    - If user exists, update username (and optionally other fields).
-    - If not, insert new user.
-    Return a schemas.User object.
+    Upsert a user by email.
+    - If exists: update username/password_hash if they changed.
+    - If not: insert.
+    Mirrors the old ORM behavior but in raw SQL.
     """
     if not user_in.email:
         raise ValueError("email is required")
 
     username = user_in.username or getattr(user_in, "name", None)
+    password = getattr(user_in, "password_hash", "") or ""
 
-    # 1) Look up by email
+    # 1) Fetch existing by email
     row = db.execute(
         text(
             """
-            SELECT user_id, email, username, created_at
+            SELECT user_id, email, username, password_hash, created_at
             FROM Users
             WHERE email = :email
             """
@@ -35,36 +39,54 @@ def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
         {"email": user_in.email},
     ).mappings().first()
 
-    # If exists → update username if provided
+    # 2) Update path
     if row:
+        updates = []
+        params = {"user_id": row["user_id"]}
+
         if username and row["username"] != username:
-            db.execute(
-                text(
-                    """
-                    UPDATE Users
-                    SET username = :username
-                    WHERE user_id = :user_id
-                    """
-                ),
-                {"username": username, "user_id": row["user_id"]},
-            )
-            row["username"] = username
+            updates.append("username = :username")
+            params["username"] = username
 
-        return schemas.User(**row)
+        if password and row["password_hash"] != password:
+            updates.append("password_hash = :password_hash")
+            params["password_hash"] = password
 
-    # If not exists → insert
+        if updates:
+            sql = f"""
+                UPDATE Users
+                SET {", ".join(updates)}
+                WHERE user_id = :user_id
+            """
+            db.execute(text(sql), params)
+
+        # Return fresh copy
+        updated = db.execute(
+            text(
+                """
+                SELECT user_id, email, username, created_at
+                FROM Users
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": row["user_id"]},
+        ).mappings().first()
+
+        return schemas.User(**updated)
+
+    # 3) Insert path
     result = db.execute(
         text(
             """
-            INSERT INTO Users (email, username, password_hash)
-            VALUES (:email, :username, :password_hash)
+            INSERT INTO Users (email, username, password_hash, created_at)
+            VALUES (:email, :username, :password_hash, :created_at)
             """
         ),
         {
             "email": user_in.email,
             "username": username,
-            # if your UserCreate has no password, this can be an empty string
-            "password_hash": getattr(user_in, "password_hash", "") or "",
+            "password_hash": password,
+            "created_at": datetime.utcnow(),
         },
     )
     user_id = result.lastrowid
@@ -83,34 +105,9 @@ def upsert_user(db: Session, user_in: schemas.UserCreate) -> schemas.User:
     return schemas.User(**new_row)
 
 
-# -------- COMMUNITY POSTS / COMMENTS / REACTIONS --------
-
-def list_posts(db: Session) -> list[schemas.CommunityPostOut]:
-    """
-    Return all community posts ordered by newest first.
-    """
-    rows = db.execute(
-        text(
-            """
-            SELECT
-                post_id,
-                user_id,
-                content,
-                visibility,
-                created_at
-            FROM CommunityPosts
-            ORDER BY created_at DESC
-            """
-        )
-    ).mappings().all()
-
-    return [schemas.CommunityPostOut(**row) for row in rows]
-
+# ---------- COMMUNITY / POSTS ----------
 
 def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.CommunityPostOut:
-    """
-    Insert a new community post and return it.
-    """
     now = datetime.utcnow()
     result = db.execute(
         text(
@@ -131,12 +128,7 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
     row = db.execute(
         text(
             """
-            SELECT
-                post_id,
-                user_id,
-                content,
-                visibility,
-                created_at
+            SELECT post_id, user_id, content, visibility, created_at
             FROM CommunityPosts
             WHERE post_id = :post_id
             """
@@ -147,10 +139,20 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
     return schemas.CommunityPostOut(**row)
 
 
+def list_posts(db: Session) -> list[schemas.CommunityPostOut]:
+    rows = db.execute(
+        text(
+            """
+            SELECT post_id, user_id, content, visibility, created_at
+            FROM CommunityPosts
+            ORDER BY created_at DESC
+            """
+        )
+    ).mappings().all()
+    return [schemas.CommunityPostOut(**row) for row in rows]
+
+
 def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.PostCommentOut:
-    """
-    Insert a new comment on a post and return it.
-    """
     now = datetime.utcnow()
     result = db.execute(
         text(
@@ -171,12 +173,7 @@ def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.P
     row = db.execute(
         text(
             """
-            SELECT
-                comment_id,
-                post_id,
-                user_id,
-                content,
-                created_at
+            SELECT comment_id, post_id, user_id, content, created_at
             FROM PostComments
             WHERE comment_id = :comment_id
             """
@@ -187,11 +184,26 @@ def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.P
     return schemas.PostCommentOut(**row)
 
 
-def add_reaction(db: Session, reaction_in: schemas.PostReactionCreate) -> None:
+def list_comments(db: Session, post_id: int) -> list[schemas.PostCommentOut]:
+    rows = db.execute(
+        text(
+            """
+            SELECT comment_id, post_id, user_id, content, created_at
+            FROM PostComments
+            WHERE post_id = :post_id
+            ORDER BY created_at ASC
+            """
+        ),
+        {"post_id": post_id},
+    ).mappings().all()
+
+    return [schemas.PostCommentOut(**row) for row in rows]
+
+
+def add_reaction(db: Session, reaction_in: schemas.PostReactionCreate):
     """
-    Insert a reaction (like, etc.) for a post.
-    (If you enforce uniqueness on (post_id,user_id,reaction_type) in DB,
-     duplicates will error at DB level.)
+    Old ORM code used merge() with a uniqueness constraint.
+    Here we just INSERT; if you kept the unique index, duplicates will error at DB level.
     """
     now = datetime.utcnow()
     db.execute(
@@ -211,9 +223,6 @@ def add_reaction(db: Session, reaction_in: schemas.PostReactionCreate) -> None:
 
 
 def reaction_summary(db: Session, post_id: int) -> list[schemas.ReactionSummary]:
-    """
-    Return counts of each reaction type for a given post.
-    """
     rows = db.execute(
         text(
             """

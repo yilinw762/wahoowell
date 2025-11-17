@@ -3,10 +3,10 @@ from datetime import date
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import text
 
 from app.database import get_db
-from app import models, schemas
+from app import schemas
 
 router = APIRouter(prefix="/api/leaderboard", tags=["leaderboard"])
 
@@ -17,86 +17,84 @@ def get_leaderboard(user_id: int, db: Session = Depends(get_db)):
     Returns today's leaderboard for the user and the users they follow.
 
     - If a friend has no health log for today => steps = 0.
-    - Sorted by steps desc.
+    - Sorted by steps desc, then name.
     """
 
     today = date.today()
 
-    # ----- Who do I follow? -----
-    follow_rows = (
-        db.query(models.Follower)
-        .filter(models.Follower.user_id == user_id)
-        .all()
-    )
-    friend_ids = [row.follower_user_id for row in follow_rows]
+    # 1) Who do I follow? (Followers.user_id = me, follower_user_id = friend)
+    follow_rows = db.execute(
+        text(
+            """
+            SELECT follower_user_id
+            FROM Followers
+            WHERE user_id = :user_id
+            """
+        ),
+        {"user_id": user_id},
+    ).mappings().all()
+    friend_ids = [row["follower_user_id"] for row in follow_rows]
 
     has_friends = len(friend_ids) > 0
 
-    # Always include myself in the leaderboard calculations
-    user_ids = friend_ids + [user_id]
+    # 2) Build the set of users in the leaderboard: me + my friends
+    user_ids = [user_id] + friend_ids
+    user_ids = list(dict.fromkeys(user_ids))  # dedupe, preserve order
 
     if not user_ids:
-        # This should never happen because we always include user_id,
-        # but keep it safe.
         return schemas.LeaderboardResponse(
-            entries=[],
-            current_user_rank=None,
-            has_friends=False,
+            entries=[], current_user_rank=None, has_friends=False
         )
 
-    # ----- Steps per user for TODAY -----
-    steps_rows = (
-        db.query(
-            models.HealthLog.user_id,
-            func.coalesce(func.sum(models.HealthLog.steps), 0).label("steps"),
-        )
-        .filter(
-            models.HealthLog.user_id.in_(user_ids),
-            models.HealthLog.date == today,
-        )
-        .group_by(models.HealthLog.user_id)
-        .all()
+    # Helper to build IN clause safely
+    id_params = {f"id_{i}": uid for i, uid in enumerate(user_ids)}
+    placeholders = ", ".join(f":id_{i}" for i in range(len(user_ids)))
+
+    # 3) Get today's steps
+    steps_sql = text(
+        f"""
+        SELECT user_id, COALESCE(SUM(steps), 0) AS steps
+        FROM HealthLogs
+        WHERE user_id IN ({placeholders})
+          AND date = :today
+        GROUP BY user_id
+        """
     )
+    steps_params = dict(id_params)
+    steps_params["today"] = today
+    steps_rows = db.execute(steps_sql, steps_params).mappings().all()
 
-    steps_by_user = {row.user_id: int(row.steps or 0) for row in steps_rows}
-
-    # Ensure everyone (friends + user) has an entry, default 0
+    steps_by_user = {row["user_id"]: int(row["steps"] or 0) for row in steps_rows}
     for uid in user_ids:
         steps_by_user.setdefault(uid, 0)
 
-    # ----- Names (username or email) -----
-    users = (
-        db.query(models.User)
-        .filter(models.User.user_id.in_(user_ids))
-        .all()
+    # 4) Get display names (username or email)
+    users_sql = text(
+        f"""
+        SELECT user_id, COALESCE(username, email) AS name
+        FROM Users
+        WHERE user_id IN ({placeholders})
+        """
     )
-    name_by_id: dict[int, str] = {}
-    for u in users:
-        if u.username:
-            name_by_id[u.user_id] = u.username
-        else:
-            name_by_id[u.user_id] = u.email
+    users_rows = db.execute(users_sql, id_params).mappings().all()
+    name_by_id = {row["user_id"]: row["name"] for row in users_rows}
 
-    # ----- Build entry list -----
-    entries = []
-    for uid, steps in steps_by_user.items():
-        name = name_by_id.get(uid, f"User {uid}")
-        entries.append(
-            {
-                "user_id": uid,
-                "name": name,
-                "steps": int(steps),
-            }
-        )
+    # 5) Build and sort entries
+    raw_entries = [
+        {
+            "user_id": uid,
+            "name": name_by_id.get(uid, f"User {uid}"),
+            "steps": steps_by_user[uid],
+        }
+        for uid in user_ids
+    ]
 
-    # Sort by steps desc, then name as tiebreaker for stable ordering
-    entries.sort(key=lambda e: (-e["steps"], e["name"]))
+    raw_entries.sort(key=lambda e: (-e["steps"], e["name"]))
 
-    # Assign ranks (1-based)
     leaderboard_entries: list[schemas.LeaderboardEntry] = []
-    current_user_rank: int | None = None
+    current_user_rank = None
 
-    for idx, e in enumerate(entries):
+    for idx, e in enumerate(raw_entries):
         rank = idx + 1
         lb_entry = schemas.LeaderboardEntry(
             user_id=e["user_id"],

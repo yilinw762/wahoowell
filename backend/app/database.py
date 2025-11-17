@@ -1,7 +1,7 @@
 import os
-from dotenv import load_dotenv # type: ignore
-from sqlalchemy import create_engine # type: ignore
-from sqlalchemy.orm import sessionmaker # type: ignore
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv()
 
@@ -16,21 +16,14 @@ SQLALCHEMY_DATABASE_URL = (
 )
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# You no longer need to use Base/models anywhere; DB is pre-created in MySQL.
+Base = declarative_base()
 
 def get_db():
-    """
-    FastAPI dependency that yields a DB session.
-    We will use db.execute(text(...)) everywhere, never db.query(models.X).
-    """
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
     finally:
         db.close()

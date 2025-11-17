@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 @router.post("/register", response_model=schemas.User)
 def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
-    # Check if email exists
+    # 1) Check if email already exists
     existing = db.execute(
         text(
             """
@@ -32,15 +32,14 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    username = user_in.username or user_in.email.split("@")[0]
-
-    if not getattr(user_in, "password", None):
+    # 2) Hash password
+    if not user_in.password:
         raise HTTPException(status_code=400, detail="Password is required")
 
-    password_hash = bcrypt.hashpw(
-        user_in.password.encode("utf-8"), bcrypt.gensalt()
-    ).decode("utf-8")
+    hashed_pw = bcrypt.hashpw(user_in.password.encode("utf-8"), bcrypt.gensalt())
+    username = user_in.username or user_in.email.split("@")[0]
 
+    # 3) Insert user
     result = db.execute(
         text(
             """
@@ -51,7 +50,7 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
         {
             "email": user_in.email,
             "username": username,
-            "password_hash": password_hash,
+            "password_hash": hashed_pw.decode("utf-8"),
         },
     )
     user_id = result.lastrowid
@@ -71,13 +70,19 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/upsert", response_model=schemas.User)
-async def upsert_user(request: Request, payload: schemas.UserCreate, db: Session = Depends(get_db)):
+async def upsert_user(
+    request: Request, payload: schemas.UserCreate, db: Session = Depends(get_db)
+):
+    """
+    Upsert endpoint used e.g. by external login.
+    Delegates to crud.upsert_user (now raw SQL).
+    """
     try:
         logger.info("Upsert request payload: %s", payload.dict())
-        logger.info("Running against DB_URL=%s", os.getenv("SQLALCHEMY_DATABASE_URL"))
+        logger.info("Running against DATABASE_URL=%s", os.getenv("DATABASE_URL"))
 
         user = crud.upsert_user(db, payload)
-        # Ensure username in response matches what we just passed in (if set)
+        # Ensure username in response matches what we just passed in (if provided)
         if payload.username:
             user.username = payload.username
 
