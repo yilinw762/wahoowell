@@ -11,15 +11,33 @@ type Profile = {
   bio?: string;
 };
 
+type SessionUser = {
+  id?: number | string;
+  user_id?: number | string;
+  sub?: number | string;
+};
+
+const deriveUserId = (user?: SessionUser | null): number | undefined => {
+  if (!user) return undefined;
+  const candidates = [user.user_id, user.id, user.sub];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    if (typeof candidate === "string" && candidate.trim()) {
+      const parsed = Number(candidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
 export default function ProfileForm() {
   const { data: session } = useSession();
 
-  // Try all possible fields
-  const userId =
-    (session?.user as any)?.user_id ??
-    (session?.user as any)?.id ??
-    Number((session?.user as any)?.sub) ??
-    undefined;
+  const userId = deriveUserId(session?.user as SessionUser | undefined);
 
   console.log("SESSION:", session);
   console.log("userId:", userId);
@@ -33,7 +51,7 @@ export default function ProfileForm() {
     bio: "",
   });
 
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   // Fetch existing profile data
@@ -41,7 +59,7 @@ export default function ProfileForm() {
     if (!userId) return;
     fetch(`http://127.0.0.1:8000/api/profiles/${userId}`)
       .then(res => res.json())
-      .then(data => {
+      .then((data: Profile) => {
         setForm({
           age: data.age ?? "",
           gender: data.gender ?? "",
@@ -79,8 +97,8 @@ export default function ProfileForm() {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
-    setResult(data);
+  const data = await res.json();
+  setResult(data as Record<string, unknown>);
     setMessage("Profile updated!");
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use as usePromise, useCallback, useEffect, useState } from "react";
+import { use as usePromise, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -8,7 +8,7 @@ import api from "@/libs/api";
 import {
   FeedPost,
   REACTION_OPTIONS,
-  formatRelative,
+  formatFullDate,
   fetchPostWithDetails,
   PostComment,
 } from "@/src/components/community/helpers";
@@ -27,6 +27,29 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
   const userId = typeof rawUserId === "string" ? Number(rawUserId) : rawUserId;
   const isAuthenticated =
     status === "authenticated" && typeof userId === "number" && !Number.isNaN(userId);
+
+  const sessionIdentity = useMemo(() => {
+    const sessionUser = session?.user as { name?: string | null; email?: string | null } | undefined;
+    const name = sessionUser?.name?.trim();
+    if (name) return name;
+    const email = sessionUser?.email;
+    if (email && email.includes("@")) {
+      return email.split("@")[0];
+    }
+    return undefined;
+  }, [session]);
+
+  const resolveDisplayName = useCallback(
+    (ownerId: number, username?: string | null) => {
+      const trimmed = username?.trim();
+      if (trimmed) return trimmed;
+      if (isAuthenticated && ownerId === userId && sessionIdentity) {
+        return sessionIdentity;
+      }
+      return `Member #${ownerId}`;
+    },
+    [isAuthenticated, sessionIdentity, userId]
+  );
 
   const postId = Number(resolvedParams.postId);
 
@@ -266,9 +289,9 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
          <div style={{ border: "1px solid #1c2535", borderRadius: 12, padding: 16 }}>
            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
              <div>
-               <strong>{post.username?.trim() || "Community member"}</strong>
-               <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 12 }}>
-                 {formatRelative(post.created_at)}
+              <strong>{resolveDisplayName(post.user_id, post.username)}</strong>
+              <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 12 }}>
+                {formatFullDate(post.created_at)}
                </span>
              </div>
              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -345,7 +368,7 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
  
              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                {post.comments.map((comment) => {
-                 const commenterName = comment.username?.trim() || "Community member";
+                const commenterName = resolveDisplayName(comment.user_id, comment.username);
                  const canDeleteComment = isAuthenticated && comment.user_id === userId;
                  return (
                    <div key={comment.comment_id} style={{ borderRadius: 8, background: "#0f172a", padding: 10 }}>
@@ -353,7 +376,7 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
                        <div>
                          <strong>{commenterName}</strong>
                          <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-                           {formatRelative(comment.created_at)}
+                           {formatFullDate(comment.created_at)}
                          </span>
                        </div>
                        {canDeleteComment && (

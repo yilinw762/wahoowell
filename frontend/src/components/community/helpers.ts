@@ -74,6 +74,24 @@ export const formatRelative = (iso: string) => {
   return "some time ago";
 };
 
+export const formatFullDate = (iso: string) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(date);
+};
+
 const emptyReactionMap = () =>
   REACTION_OPTIONS.reduce<Record<string, number>>((acc, option) => {
     acc[option.type] = 0;

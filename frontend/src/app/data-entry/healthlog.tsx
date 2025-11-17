@@ -13,7 +13,8 @@ export default function HealthLogForm() {
     stress_level: "",
     notes: "",
   });
-  const [result, setResult] = useState<any>(null);
+  type HealthLogResponse = Record<string, unknown>;
+  const [result, setResult] = useState<HealthLogResponse | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });

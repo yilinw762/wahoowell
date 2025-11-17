@@ -14,6 +14,23 @@ type DataEntryForm = {
   goal: string;
 };
 
+type SessionUser = {
+  id?: number | string;
+  name?: string | null;
+  email?: string | null;
+};
+
+type HealthLogApiResponse = {
+  date: string;
+  steps: number | null;
+  heart_rate_avg: number | null;
+  sleep_hours: number | null;
+  calories_burned: number | null;
+  exercise_minutes: number | null;
+  main_exercise: string | null;
+  goal: string | null;
+} | null;
+
 const emptyForm: DataEntryForm = {
   date: "",
   steps: "",
@@ -27,7 +44,18 @@ const emptyForm: DataEntryForm = {
 
 export default function DataEntryPage() {
   const { data: session, status } = useSession();
-  const userId = (session?.user as any)?.id as number | undefined;
+  const sessionUser = session?.user as SessionUser | undefined;
+  const normalizeUserId = (value?: number | string): number | undefined => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+  };
+  const userId = normalizeUserId(sessionUser?.id);
 
   const [form, setForm] = useState<DataEntryForm>(emptyForm);
   const [loadingDay, setLoadingDay] = useState(false);
@@ -67,7 +95,7 @@ export default function DataEntryPage() {
         );
         if (!res.ok) throw new Error("Failed to fetch day data");
 
-        const data = await res.json();
+        const data = (await res.json()) as HealthLogApiResponse;
 
         if (data === null) {
           // No entry yet for that day – clear fields but keep date
@@ -104,7 +132,6 @@ export default function DataEntryPage() {
     };
 
     fetchExisting();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, userId, form.date]);
 
   const handleChange = (

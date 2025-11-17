@@ -35,9 +35,33 @@ type LeaderboardResponse = {
   current_user_entry: LeaderboardEntry | null;
 };
 
+type SessionUser = {
+  id?: number | string;
+  user_id?: number | string;
+  sub?: number | string;
+};
+
+const extractUserId = (user?: SessionUser | null): number | undefined => {
+  if (!user) return undefined;
+
+  const candidates = [user.id, user.user_id, user.sub];
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
-  const userId = (session?.user as any)?.id as number | undefined;
+  const userId = extractUserId(session?.user as SessionUser | undefined);
 
   const [dashboard, setDashboard] = useState<DashboardData>(initialDashboard);
   const [loadingDashboard, setLoadingDashboard] = useState(false);

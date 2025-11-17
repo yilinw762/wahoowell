@@ -10,7 +10,7 @@ import {
   PostComment,
   REACTION_OPTIONS,
   VISIBILITY_OPTIONS,
-  formatRelative,
+  formatFullDate,
   hydratePosts,
   fetchPostWithDetails,
 } from "@/src/components/community/helpers";
@@ -36,6 +36,29 @@ export default function CommunityFeed() {
 
   const isAuthenticated =
     status === "authenticated" && typeof userId === "number" && !Number.isNaN(userId);
+
+  const sessionIdentity = useMemo(() => {
+    const sessionUser = session?.user as { name?: string | null; email?: string | null } | undefined;
+    const name = sessionUser?.name?.trim();
+    if (name) return name;
+    const email = sessionUser?.email;
+    if (email && email.includes("@")) {
+      return email.split("@")[0];
+    }
+    return undefined;
+  }, [session]);
+
+  const resolveDisplayName = useCallback(
+    (ownerId: number, username?: string | null) => {
+      const trimmed = username?.trim();
+      if (trimmed) return trimmed;
+      if (isAuthenticated && ownerId === userId && sessionIdentity) {
+        return sessionIdentity;
+      }
+      return `Member #${ownerId}`;
+    },
+    [isAuthenticated, sessionIdentity, userId]
+  );
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
@@ -420,7 +443,7 @@ export default function CommunityFeed() {
       )}
 
       {posts.map((post) => {
-        const displayName = post.username?.trim() || "Community member";
+        const displayName = resolveDisplayName(post.user_id, post.username);
         const canDeletePost = isAuthenticated && post.user_id === userId;
 
         return (
@@ -434,7 +457,7 @@ export default function CommunityFeed() {
             <div>
               <strong>{displayName}</strong>
               <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 12 }}>
-                {formatRelative(post.created_at)}
+                {formatFullDate(post.created_at)}
               </span>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -522,7 +545,7 @@ export default function CommunityFeed() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {post.comments.map((comment) => {
-                const commenterName = comment.username?.trim() || "Community member";
+                const commenterName = resolveDisplayName(comment.user_id, comment.username);
                 const canDeleteComment =
                   isAuthenticated && comment.user_id === userId;
                 return (
@@ -531,7 +554,7 @@ export default function CommunityFeed() {
                     <div>
                       <strong>{commenterName}</strong>
                       <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-                        {formatRelative(comment.created_at)}
+                        {formatFullDate(comment.created_at)}
                       </span>
                     </div>
                     {canDeleteComment && (
