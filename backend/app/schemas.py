@@ -146,3 +146,42 @@ class LeaderboardEntryOut(BaseModel):
 class LeaderboardResponseOut(BaseModel):
     entries: List[LeaderboardEntryOut]
     current_user_entry: Optional[LeaderboardEntryOut] = None
+
+class CommunityPostCreate(BaseModel):
+    user_id: int
+    content: str
+    visibility: str  # or use an Enum if you have one
+
+class CommunityPostOut(BaseModel):
+    post_id: int
+    user_id: int
+    content: str
+    visibility: str
+    created_at: datetime
+
+class PostCommentCreate(BaseModel):
+    post_id: int
+    user_id: int
+    content: str
+
+class PostCommentOut(BaseModel):
+    comment_id: int
+    post_id: int
+    user_id: int
+    content: str
+    created_at: datetime
+
+class PostReactionCreate(BaseModel):
+    post_id: int
+    user_id: int
+    reaction_type: str
+
+class ReactionSummary(BaseModel):
+    reaction_type: str
+    count: int
+
+class PostReactionOut(BaseModel):
+    post_id: int
+    user_id: int
+    reaction_type: str
+    created_at: datetime        
