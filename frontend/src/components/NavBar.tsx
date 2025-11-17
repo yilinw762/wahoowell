@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/data-entry", label: "Data Entry" },
   { href: "/community", label: "Community" },
+  { href: "/profiles", label: "Profile" },
 ];
 
 export default function Navbar() {

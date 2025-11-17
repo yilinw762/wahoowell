@@ -203,3 +203,20 @@ class PostReactionOut(BaseModel):
     user_id: int
     reaction_type: str
     created_at: datetime        
+
+class ProfileBase(BaseModel):
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    height_cm: Optional[int] = None
+    weight_kg: Optional[int] = None
+    timezone: Optional[str] = None
+    bio: Optional[str] = None
+
+class ProfileCreate(ProfileBase):
+    pass
+
+class ProfileUpdate(ProfileBase):
+    pass
+
+class ProfileOut(ProfileBase):
+    user_id: int

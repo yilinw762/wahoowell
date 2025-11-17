@@ -10,7 +10,7 @@ from app.database import get_db
 from app.schemas import HealthLogCreate, HealthLogOut
 
 # Routers
-from .api import health, users, community, dashboard, leaderboard
+from .api import health, users, community, dashboard, leaderboard, profiles
 
 app = FastAPI(title="WahooWell API")
 
@@ -20,6 +20,7 @@ app.include_router(users.router)
 app.include_router(community.router)
 app.include_router(dashboard.router)
 app.include_router(leaderboard.router)
+app.include_router(profiles.router)
 
 allowed_origins = [
     "http://localhost:3000",

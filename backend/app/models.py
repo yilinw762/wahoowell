@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Date, ForeignKey, DateTime, func, String  # type: ignore
+from sqlalchemy import Column, Integer, SmallInteger, Enum, Text, Float, Date, ForeignKey, DateTime, func, String  # type: ignore
 from sqlalchemy.orm import relationship
 from app.database import Base
 from datetime import datetime
@@ -64,3 +64,12 @@ class Follower(Base):
     follower_user_id = Column(Integer, ForeignKey("Users.user_id"), nullable=False)
     since = Column(DateTime, server_default=func.now())
 
+class Profile(Base):
+    __tablename__ = "Profiles"
+    user_id = Column(Integer, ForeignKey("Users.user_id"), primary_key=True)
+    age = Column(SmallInteger, nullable=True)
+    gender = Column(Enum("M", "F", "Other"), nullable=True)
+    height_cm = Column(SmallInteger, nullable=True)
+    weight_kg = Column(SmallInteger, nullable=True)
+    timezone = Column(String(64), nullable=True)
+    bio = Column(Text, nullable=True)

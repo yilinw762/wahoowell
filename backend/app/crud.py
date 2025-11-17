@@ -284,3 +284,41 @@ def reaction_summary(db: Session, post_id: int) -> list[schemas.ReactionSummary]
     ).mappings().all()
 
     return [schemas.ReactionSummary(**row) for row in rows]
+
+def create_profile(db: Session, user_id: int):
+    db.execute(
+        text("""
+            INSERT INTO Profiles (user_id)
+            VALUES (:user_id)
+            ON DUPLICATE KEY UPDATE user_id = user_id
+        """),
+        {"user_id": user_id}
+    )
+    db.commit()
+
+def get_profile(db: Session, user_id: int):
+    row = db.execute(
+        text("SELECT * FROM Profiles WHERE user_id = :user_id"),
+        {"user_id": user_id}
+    ).mappings().first()
+    return row
+
+def update_profile(db: Session, user_id: int, profile_in: schemas.ProfileUpdate):
+    db.execute(
+        text("""
+            UPDATE Profiles
+            SET age = :age, gender = :gender, height_cm = :height_cm,
+                weight_kg = :weight_kg, timezone = :timezone, bio = :bio
+            WHERE user_id = :user_id
+        """),
+        {
+            "user_id": user_id,
+            "age": profile_in.age,
+            "gender": profile_in.gender,
+            "height_cm": profile_in.height_cm,
+            "weight_kg": profile_in.weight_kg,
+            "timezone": profile_in.timezone,
+            "bio": profile_in.bio,
+        }
+    )
+    db.commit()
