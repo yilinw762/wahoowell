@@ -1,181 +1,116 @@
-# app/api/followers.py
-from datetime import date
-
-from fastapi import APIRouter, Depends, HTTPException  # type: ignore
-from sqlalchemy.orm import Session  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from sqlalchemy import text
-
-from ..database import get_db
-from .. import schemas
+from app.database import get_db
+from app import schemas
+from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/followers", tags=["followers"])
 
+class FollowAction(BaseModel):
+    user_id: int
+    follower_user_id: int
 
-@router.post("/add", response_model=schemas.FollowerOut)
-def add_follower(follower: schemas.FollowerCreate, db: Session = Depends(get_db)):
-    """
-    Add a follow relationship: user_id follows follower_user_id.
-    Prevent self-follow and duplicates.
-    """
-    if follower.user_id == follower.follower_user_id:
-        raise HTTPException(status_code=400, detail="Cannot follow yourself")
-
-    existing = db.execute(
-        text(
-            """
-            SELECT follower_id, user_id, follower_user_id, since
-            FROM Followers
-            WHERE user_id = :user_id AND follower_user_id = :follower_user_id
-            """
-        ),
-        {
-            "user_id": follower.user_id,
-            "follower_user_id": follower.follower_user_id,
-        },
+# --- Get suggested profiles ---
+@router.get("/suggestions/{user_id}", response_model=list[schemas.ProfileWithFollowStatus])
+def suggested_profiles(user_id: int, db: Session = Depends(get_db)):
+    # Get current user's profile
+    my_profile = db.execute(
+        text("SELECT age, gender FROM Profiles WHERE user_id = :user_id"),
+        {"user_id": user_id},
     ).mappings().first()
+    if not my_profile:
+        raise HTTPException(status_code=404, detail="User profile not found")
 
-    if existing:
-        raise HTTPException(status_code=400, detail="Already following")
-
-    result = db.execute(
-        text(
-            """
-            INSERT INTO Followers (user_id, follower_user_id, since)
-            VALUES (:user_id, :follower_user_id, NOW())
-            """
-        ),
-        {
-            "user_id": follower.user_id,
-            "follower_user_id": follower.follower_user_id,
-        },
-    )
-    follower_id = result.lastrowid
-
-    row = db.execute(
-        text(
-            """
-            SELECT follower_id, user_id, follower_user_id, since
-            FROM Followers
-            WHERE follower_id = :follower_id
-            """
-        ),
-        {"follower_id": follower_id},
-    ).mappings().first()
-
-    return schemas.FollowerOut(**row)
-
-
-@router.get("/list/{user_id}", response_model=list[schemas.FollowerOut])
-def list_followers(user_id: int, db: Session = Depends(get_db)):
-    """
-    Return all follow relationships where this user is the 'user_id'
-    (i.e., everyone they follow).
-    """
+    # First, try to find similar users
     rows = db.execute(
-        text(
-            """
-            SELECT follower_id, user_id, follower_user_id, since
-            FROM Followers
-            WHERE user_id = :user_id
-            ORDER BY since DESC
-            """
-        ),
-        {"user_id": user_id},
+        text("""
+            SELECT u.user_id, u.username, u.email,
+                   p.age, p.gender, p.height_cm, p.weight_kg, p.bio, p.timezone,
+                   EXISTS(
+                       SELECT 1 FROM Followers f
+                       WHERE f.user_id = :user_id AND f.follower_user_id = u.user_id
+                   ) AS is_following
+            FROM Users u
+            JOIN Profiles p ON u.user_id = p.user_id
+            WHERE u.user_id != :user_id
+              AND p.gender = :gender
+              AND p.age BETWEEN :age_minus AND :age_plus
+            LIMIT 5
+        """),
+        {
+            "user_id": user_id,
+            "gender": my_profile["gender"],
+            "age_minus": my_profile["age"] - 5,
+            "age_plus": my_profile["age"] + 5
+        }
     ).mappings().all()
 
-    return [schemas.FollowerOut(**row) for row in rows]
+    # If not enough, fill with other users (excluding self and already-followed)
+    if len(rows) < 2:
+        extra_rows = db.execute(
+            text("""
+                SELECT u.user_id, u.username, u.email,
+                       p.age, p.gender, p.height_cm, p.weight_kg, p.bio, p.timezone,
+                       EXISTS(
+                           SELECT 1 FROM Followers f
+                           WHERE f.user_id = :user_id AND f.follower_user_id = u.user_id
+                       ) AS is_following
+                FROM Users u
+                JOIN Profiles p ON u.user_id = p.user_id
+                WHERE u.user_id != :user_id
+                LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": 2 - len(rows)}
+        ).mappings().all()
+        # Avoid duplicates
+        seen_ids = {r["user_id"] for r in rows}
+        rows += [r for r in extra_rows if r["user_id"] not in seen_ids]
 
+    return [
+        {
+            "user_id": r["user_id"],
+            "username": r["username"],
+            "email": r["email"],
+            "age": r["age"],
+            "gender": r["gender"],
+            "height_cm": r["height_cm"],
+            "weight_kg": r["weight_kg"],
+            "bio": r["bio"],
+            "timezone": r["timezone"],
+            "is_following": bool(r["is_following"])
+        }
+        for r in rows
+    ]
 
-@router.get("/leaderboard/{user_id}", response_model=schemas.LeaderboardResponseOut)
-def leaderboard(user_id: int, db: Session = Depends(get_db)):
-    """
-    Return today's leaderboard for the given user and everyone they follow.
+# --- Follow a user ---
+@router.post("/add")
+def follow_user(action: FollowAction, db: Session = Depends(get_db)):
+    user_id = action.user_id
+    follower_user_id = action.follower_user_id
+    exists = db.execute(
+        text("SELECT 1 FROM Followers WHERE user_id = :user_id AND follower_user_id = :follower_user_id"),
+        {"user_id": user_id, "follower_user_id": follower_user_id}
+    ).first()
+    if exists:
+        return {"status": "already following"}
 
-    - If the user has NO followers -> entries = [], current_user_entry = None
-      (friends-only view).
-    """
-
-    today = date.today()
-
-    # 1) Who do I follow? (friends)
-    follower_rows = db.execute(
-        text(
-            """
-            SELECT follower_user_id
-            FROM Followers
-            WHERE user_id = :user_id
-            """
-        ),
-        {"user_id": user_id},
-    ).mappings().all()
-    friend_ids = [row["follower_user_id"] for row in follower_rows]
-
-    if not friend_ids:
-        return schemas.LeaderboardResponseOut(entries=[], current_user_entry=None)
-
-    user_ids = friend_ids  # friends only
-
-    # Helper for IN clause
-    id_params = {f"id_{i}": uid for i, uid in enumerate(user_ids)}
-    placeholders = ", ".join(f":id_{i}" for i in range(len(user_ids)))
-
-    # 3) Today's steps for each friend
-    steps_sql = text(
-        f"""
-        SELECT user_id, COALESCE(SUM(steps), 0) AS steps
-        FROM HealthLogs
-        WHERE user_id IN ({placeholders})
-          AND date = :today
-        GROUP BY user_id
-        """
+    db.execute(
+        text("INSERT INTO Followers (user_id, follower_user_id, since) VALUES (:user_id, :follower_user_id, :since)"),
+        {"user_id": user_id, "follower_user_id": follower_user_id, "since": datetime.utcnow()}
     )
-    steps_params = dict(id_params)
-    steps_params["today"] = today
-    steps_rows = db.execute(steps_sql, steps_params).mappings().all()
+    db.commit()
+    return {"status": "followed"}
 
-    steps_by_user = {row["user_id"]: int(row["steps"] or 0) for row in steps_rows}
-    for uid in user_ids:
-        steps_by_user.setdefault(uid, 0)
-
-    # 4) Get usernames (or fallback to email)
-    users_sql = text(
-        f"""
-        SELECT user_id, COALESCE(username, email) AS username
-        FROM Users
-        WHERE user_id IN ({placeholders})
-        """
+# --- Unfollow a user ---
+@router.post("/unfollow")
+def unfollow_user(action: FollowAction, db: Session = Depends(get_db)):
+    user_id = action.user_id
+    follower_user_id = action.follower_user_id
+    db.execute(
+        text("DELETE FROM Followers WHERE user_id = :user_id AND follower_user_id = :follower_user_id"),
+        {"user_id": user_id, "follower_user_id": follower_user_id}
     )
-    users_rows = db.execute(users_sql, id_params).mappings().all()
-    username_by_id = {row["user_id"]: row["username"] for row in users_rows}
-
-    # 5) Build and sort entries
-    raw_entries = []
-    for uid in user_ids:
-        raw_entries.append(
-            {
-                "user_id": uid,
-                "username": username_by_id.get(uid, f"User {uid}"),
-                "steps": steps_by_user[uid],
-            }
-        )
-
-    # Sort by steps desc, then username
-    raw_entries.sort(key=lambda e: (-e["steps"], e["username"]))
-
-    entries: list[schemas.LeaderboardEntryOut] = []
-    current_user_entry = None  # friends-only leaderboard
-
-    for idx, e in enumerate(raw_entries):
-        rank = idx + 1
-        entry_model = schemas.LeaderboardEntryOut(
-            user_id=e["user_id"],
-            username=e["username"],
-            steps=e["steps"],
-            rank=rank,
-        )
-        entries.append(entry_model)
-
-    return schemas.LeaderboardResponseOut(
-        entries=entries,
-        current_user_entry=current_user_entry,
-    )
+    db.commit()
+    return {"status": "unfollowed"}

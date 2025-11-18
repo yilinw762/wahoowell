@@ -220,3 +220,15 @@ class ProfileUpdate(ProfileBase):
 
 class ProfileOut(ProfileBase):
     user_id: int
+
+class ProfileWithFollowStatus(BaseModel):
+    user_id: int
+    username: str | None = None
+    email: str
+    age: int | None = None
+    gender: str | None = None
+    height_cm: int | None = None
+    weight_kg: int | None = None
+    bio: str | None = None
+    timezone: str | None = None
+    is_following: bool
