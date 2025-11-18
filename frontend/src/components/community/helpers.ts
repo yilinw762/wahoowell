@@ -1,5 +1,17 @@
 import api from "@/libs/api";
 
+export type CommunityPostImage = {
+  image_id: number;
+  file_name: string;
+  storage_path: string;
+  public_url: string;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  created_at: string;
+};
+
 export type CommunityPost = {
   post_id: number;
   user_id: number;
@@ -7,6 +19,7 @@ export type CommunityPost = {
   content: string;
   visibility: string;
   created_at: string;
+  images: CommunityPostImage[];
 };
 
 export type PostComment = {

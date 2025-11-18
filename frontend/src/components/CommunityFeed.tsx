@@ -1,6 +1,18 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+/* eslint-disable @next/next/no-img-element */
+
+import {
+  ChangeEvent,
+  DragEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import api from "@/libs/api";
@@ -14,6 +26,100 @@ import {
   hydratePosts,
   fetchPostWithDetails,
 } from "@/src/components/community/helpers";
+import PostImageGallery from "@/src/components/community/PostImageGallery";
+
+type PendingImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
+const ACCEPTED_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+];
+const ACCEPTED_IMAGE_SET = new Set(ACCEPTED_IMAGE_TYPES);
+const MAX_IMAGES_PER_POST = 4;
+const MAX_IMAGE_SIZE_MB = 5;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const TARGET_IMAGE_SIZE_BYTES = 1.5 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 1600;
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (error) => reject(error);
+    img.src = src;
+  });
+
+const optimizeImageIfNeeded = async (file: File): Promise<File> => {
+  if (!ACCEPTED_IMAGE_SET.has(file.type)) {
+    return file;
+  }
+
+  let dataUrl: string | null = null;
+  let cachedImage: HTMLImageElement | null = null;
+
+  const ensureImageLoaded = async (): Promise<HTMLImageElement> => {
+    if (!dataUrl) {
+      dataUrl = await readFileAsDataUrl(file);
+    }
+    if (!cachedImage) {
+      cachedImage = await loadImage(dataUrl);
+    }
+    return cachedImage;
+  };
+
+  if (file.size <= TARGET_IMAGE_SIZE_BYTES) {
+    const image = await ensureImageLoaded();
+    if (Math.max(image.width, image.height) <= MAX_IMAGE_DIMENSION) {
+      return file;
+    }
+  }
+
+  const image = await ensureImageLoaded();
+
+  const longestSide = Math.max(image.width, image.height);
+  const scale = longestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / longestSide : 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return file;
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const preferPng = file.type === "image/png" && file.size <= MAX_IMAGE_SIZE_BYTES;
+  const mimeType = preferPng ? "image/png" : "image/jpeg";
+  const quality = mimeType === "image/jpeg" ? 0.82 : undefined;
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((result) => resolve(result), mimeType, quality)
+  );
+
+  if (!blob) {
+    return file;
+  }
+
+  const extension = mimeType === "image/png" ? ".png" : ".jpg";
+  const sanitizedName = file.name.replace(/\.[^.]+$/, extension);
+  const optimized = new File([blob], sanitizedName, { type: mimeType });
+  return optimized.size <= MAX_IMAGE_SIZE_BYTES ? optimized : file;
+};
 
 export default function CommunityFeed() {
   const { data: session, status } = useSession();
@@ -33,6 +139,23 @@ export default function CommunityFeed() {
     VISIBILITY_OPTIONS[0]?.value ?? "public"
   );
   const [creatingPost, setCreatingPost] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [processingImages, setProcessingImages] = useState(false);
+  const [isDraggingImages, setIsDraggingImages] = useState(false);
+  const fileInputId = useId();
+  const pendingImagesRef = useRef<PendingImage[]>([]);
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  useEffect(() => {
+    return () => {
+      pendingImagesRef.current.forEach((image) =>
+        URL.revokeObjectURL(image.previewUrl)
+      );
+    };
+  }, []);
 
   const isAuthenticated =
     status === "authenticated" && typeof userId === "number" && !Number.isNaN(userId);
@@ -94,7 +217,10 @@ export default function CommunityFeed() {
   const handleCreatePost = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const content = newPostContent.trim();
-    if (!content) return;
+    if (!content) {
+      setError("Add a quick message before posting.");
+      return;
+    }
     if (!isAuthenticated || !userId) {
       setError("Sign in to share a post.");
       return;
@@ -103,14 +229,17 @@ export default function CommunityFeed() {
     setCreatingPost(true);
     setError(null);
     try {
-      const payload = {
-        user_id: userId,
-        content,
-        visibility: newPostVisibility,
-      };
+      const formData = new FormData();
+      formData.append("user_id", String(userId));
+      formData.append("content", content);
+      formData.append("visibility", newPostVisibility);
+      pendingImages.forEach((image) => {
+        formData.append("images", image.file);
+      });
+
       const { data: createdPost } = await api.post<CommunityPost>(
         "/api/community/posts",
-        payload
+        formData
       );
       const [hydrated] = await hydratePosts(
         [createdPost],
@@ -118,6 +247,10 @@ export default function CommunityFeed() {
       );
       setPosts((prev) => [hydrated, ...prev]);
       setNewPostContent("");
+      setPendingImages((prev) => {
+        prev.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+        return [];
+      });
     } catch (err) {
       console.error("Failed to create post", err);
       setError("We couldn't create that post. Please try again.");
@@ -319,6 +452,126 @@ export default function CommunityFeed() {
     return null;
   }, [loading, error, showEmptyState]);
 
+  const addFilesToQueue = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      setError(null);
+      setProcessingImages(true);
+
+      try {
+        const availableSlots = Math.max(
+          0,
+          MAX_IMAGES_PER_POST - pendingImagesRef.current.length
+        );
+
+        if (availableSlots <= 0) {
+          setError(`You can upload up to ${MAX_IMAGES_PER_POST} images per post.`);
+          return;
+        }
+
+        let remainingSlots = availableSlots;
+        const errors: string[] = [];
+        const recordError = (message: string) => {
+          if (!errors.includes(message)) {
+            errors.push(message);
+          }
+        };
+
+        const tasks = files.map(async (original) => {
+          if (!ACCEPTED_IMAGE_SET.has(original.type)) {
+            recordError("Please choose PNG, JPG, WEBP, AVIF, or GIF files.");
+            return null;
+          }
+
+          if (remainingSlots <= 0) {
+            recordError(`You can upload up to ${MAX_IMAGES_PER_POST} images per post.`);
+            return null;
+          }
+
+          remainingSlots -= 1;
+
+          let constrained = original;
+          try {
+            constrained = await optimizeImageIfNeeded(original);
+          } catch (optimizationError) {
+            console.warn("Image optimization failed", optimizationError);
+          }
+
+          if (constrained.size > MAX_IMAGE_SIZE_BYTES) {
+            recordError(
+              `Each image must be under ${MAX_IMAGE_SIZE_MB}MB even after optimization.`
+            );
+            return null;
+          }
+
+          return {
+            id:
+              typeof crypto !== "undefined" && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random()}`,
+            file: constrained,
+            previewUrl: URL.createObjectURL(constrained),
+          } satisfies PendingImage;
+        });
+
+        const prepared = (await Promise.all(tasks)).filter(
+          (entry): entry is PendingImage => Boolean(entry)
+        );
+
+        if (prepared.length) {
+          setPendingImages((prev) => [...prev, ...prepared]);
+        }
+
+        if (errors.length) {
+          setError(errors[0]);
+        }
+      } finally {
+        setProcessingImages(false);
+      }
+    },
+    [setError]
+  );
+
+  const handleImageInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    await addFilesToQueue(files);
+  };
+
+  const handleImageDrop = async (event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingImages(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    await addFilesToQueue(files);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
+    event.preventDefault();
+    if (!isDraggingImages) {
+      setIsDraggingImages(true);
+    }
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLLabelElement | HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingImages(false);
+  };
+
+  const handleRemovePendingImage = (id: string) => {
+    setPendingImages((prev) => {
+      const next = prev.filter((image) => {
+        if (image.id === id) {
+          URL.revokeObjectURL(image.previewUrl);
+          return false;
+        }
+        return true;
+      });
+      return next;
+    });
+  };
+
+  const shareDisabled = creatingPost || (newPostContent.trim().length === 0);
+
   return (
     <div className="feed" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div
@@ -402,6 +655,108 @@ export default function CommunityFeed() {
               }}
             />
           </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 13, color: "var(--muted)" }}>
+              Photos (optional)
+            </label>
+            <label
+              htmlFor={fileInputId}
+              onDrop={handleImageDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              style={{
+                border: `1px dashed ${isDraggingImages ? "#60a5fa" : "#1f2937"}`,
+                borderRadius: 12,
+                padding: 16,
+                background: isDraggingImages ? "rgba(96,165,250,0.08)" : "#050910",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                textAlign: "center",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                id={fileInputId}
+                type="file"
+                accept={ACCEPTED_IMAGE_TYPES.join(",")}
+                multiple
+                onChange={handleImageInputChange}
+                style={{ display: "none" }}
+              />
+              <strong style={{ color: "#e2e8f0" }}>Drag & drop or click to browse</strong>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                Up to {MAX_IMAGES_PER_POST} images · {MAX_IMAGE_SIZE_MB}MB each
+              </span>
+            </label>
+            {processingImages && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: "#93c5fd",
+                }}
+              >
+                <span aria-hidden="true">⏳</span>
+                <span>Optimizing images…</span>
+              </div>
+            )}
+            {pendingImages.length > 0 && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {pendingImages.map((image, index) => (
+                  <div
+                    key={image.id}
+                    style={{
+                      position: "relative",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      border: "1px solid #1f2937",
+                      background: "#0f172a",
+                      aspectRatio: "1 / 1",
+                    }}
+                  >
+                    <img
+                      src={image.previewUrl}
+                      alt={`Selected image ${index + 1}`}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePendingImage(image.id)}
+                      style={{
+                        position: "absolute",
+                        top: 6,
+                        right: 6,
+                        border: "none",
+                        borderRadius: "50%",
+                        width: 28,
+                        height: 28,
+                        background: "rgba(15,23,42,0.8)",
+                        color: "#f8fafc",
+                        cursor: "pointer",
+                      }}
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <label style={{ fontSize: 13 }}>Visibility:</label>
             <select
@@ -424,7 +779,7 @@ export default function CommunityFeed() {
             <div style={{ flex: 1 }} />
             <button
               type="submit"
-              disabled={creatingPost || newPostContent.trim().length === 0}
+              disabled={shareDisabled}
               style={{
                 padding: "8px 18px",
                 borderRadius: 999,
@@ -433,7 +788,7 @@ export default function CommunityFeed() {
                 color: "white",
                 fontWeight: 600,
                 cursor: creatingPost ? "progress" : "pointer",
-                opacity: newPostContent.trim().length === 0 ? 0.6 : 1,
+                opacity: shareDisabled ? 0.6 : 1,
               }}
             >
               {creatingPost ? "Posting..." : "Share"}
@@ -493,6 +848,11 @@ export default function CommunityFeed() {
             </div>
           </div>
           <p style={{ margin: "6px 0 12px", lineHeight: 1.5 }}>{post.content}</p>
+          {post.images.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <PostImageGallery images={post.images} />
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
             {REACTION_OPTIONS.map((reaction) => {

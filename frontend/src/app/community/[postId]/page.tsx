@@ -12,6 +12,7 @@ import {
   fetchPostWithDetails,
   PostComment,
 } from "@/src/components/community/helpers";
+import PostImageGallery from "@/src/components/community/PostImageGallery";
 
 interface PostDetailPageProps {
   params: Promise<{
@@ -317,6 +318,11 @@ export default function PostDetailPage({ params }: PostDetailPageProps) {
              </div>
            </div>
            <p style={{ margin: "6px 0 12px", lineHeight: 1.5 }}>{post.content}</p>
+           {post.images.length > 0 && (
+             <div style={{ marginBottom: 12 }}>
+               <PostImageGallery images={post.images} />
+             </div>
+           )}
  
            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
              {REACTION_OPTIONS.map((reaction) => {
