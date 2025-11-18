@@ -10,6 +10,8 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core import storage as storage_utils
+
 from . import schemas
 
 
@@ -64,7 +66,12 @@ def _fetch_image_map(db: Session, post_ids: Sequence[int]) -> dict[int, list[sch
 
     image_map: dict[int, list[schemas.CommunityPostImageOut]] = defaultdict(list)
     for row in rows:
-        image_map[row["post_id"]].append(schemas.CommunityPostImageOut(**row))
+        payload = dict(row)
+        payload["public_url"] = storage_utils.get_media_url(
+            payload["storage_path"],
+            fallback_url=payload.get("public_url"),
+        )
+        image_map[payload["post_id"]].append(schemas.CommunityPostImageOut(**payload))
     return image_map
 
 
@@ -340,7 +347,16 @@ def list_post_images(db: Session, post_id: int) -> list[schemas.CommunityPostIma
         {"post_id": post_id},
     ).mappings().all()
 
-    return [schemas.CommunityPostImageOut(**row) for row in rows]
+    results: list[schemas.CommunityPostImageOut] = []
+    for row in rows:
+        payload = dict(row)
+        payload["public_url"] = storage_utils.get_media_url(
+            payload["storage_path"],
+            fallback_url=payload.get("public_url"),
+        )
+        results.append(schemas.CommunityPostImageOut(**payload))
+
+    return results
 
 
 def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.PostCommentOut:

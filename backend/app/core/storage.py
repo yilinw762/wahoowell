@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Sequence
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
+from google.api_core import exceptions
 from google.cloud import storage
 
 from app import schemas
@@ -30,8 +31,13 @@ ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"}
 MAX_IMAGES_PER_POST = int(os.getenv("COMMUNITY_IMAGES_MAX", "4"))
 MAX_IMAGE_SIZE_MB = int(os.getenv("COMMUNITY_IMAGE_MAX_MB", "5"))
 MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+AUTO_MAKE_PUBLIC = os.getenv("GCS_AUTO_MAKE_PUBLIC", "true").lower() in {"1", "true", "yes"}
+
+SIGNED_URL_MODE = os.getenv("GCS_SIGNED_URL_MODE", "auto").strip().lower()
+SIGNED_URL_TTL_SECONDS = int(os.getenv("GCS_SIGNED_URL_TTL", "86400"))
 
 _cached_client: storage.Client | None = None
+_public_acl_failed = False
 
 
 def _get_bucket_name() -> str:
@@ -73,7 +79,40 @@ def _build_public_url(object_name: str) -> str:
     return f"https://storage.googleapis.com/{bucket}/{object_name}"
 
 
+def _should_use_signed_urls() -> bool:
+    if SIGNED_URL_MODE in {"always", "true", "1"}:
+        return True
+    if SIGNED_URL_MODE in {"never", "false", "0"}:
+        return False
+    return (not AUTO_MAKE_PUBLIC) or _public_acl_failed
+
+
+def _generate_signed_url(object_name: str) -> str:
+    expiration = timedelta(seconds=max(60, SIGNED_URL_TTL_SECONDS))
+    blob = _get_bucket().blob(object_name)
+    return blob.generate_signed_url(
+        version="v4",
+        method="GET",
+        expiration=expiration,
+        response_disposition="inline",
+    )
+
+
+def get_media_url(object_name: str, *, fallback_url: str | None = None) -> str:
+    if not object_name:
+        return fallback_url or ""
+
+    if _should_use_signed_urls():
+        try:
+            return _generate_signed_url(object_name)
+        except Exception as exc:  # pragma: no cover - network
+            logger.warning("Failed to generate signed URL for %s: %s", object_name, exc)
+
+    return fallback_url or _build_public_url(object_name)
+
+
 async def upload_post_images(files: Sequence[UploadFile]) -> list[schemas.CommunityPostImageCreate]:
+    global _public_acl_failed
     usable = [file for file in files if file and file.filename]
     if not usable:
         return []
@@ -110,7 +149,19 @@ async def upload_post_images(files: Sequence[UploadFile]) -> list[schemas.Commun
         blob.cache_control = "public, max-age=31536000, immutable"
         blob.upload_from_string(contents, content_type=content_type)
 
-        public_url = _build_public_url(object_name)
+        if AUTO_MAKE_PUBLIC and not _should_use_signed_urls():
+            global _public_acl_failed
+            try:
+                blob.make_public()
+            except exceptions.GoogleAPIError as exc:
+                _public_acl_failed = True
+                logger.info(
+                    "Unable to update ACL for %s. Falling back to signed URLs for new images. Error: %s",
+                    blob.name,
+                    exc,
+                )
+
+        public_url = get_media_url(object_name)
 
         uploads.append(
             schemas.CommunityPostImageCreate(
