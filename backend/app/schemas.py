@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthLogBase(BaseModel):
@@ -158,10 +158,30 @@ class LeaderboardResponseOut(BaseModel):
     current_user_entry: Optional[LeaderboardEntryOut] = None
 
 
+class CommunityPostImageBase(BaseModel):
+    file_name: str
+    storage_path: str
+    public_url: str
+    content_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class CommunityPostImageCreate(CommunityPostImageBase):
+    pass
+
+
+class CommunityPostImageOut(CommunityPostImageBase):
+    image_id: int
+    created_at: datetime
+
+
 class CommunityPostCreate(BaseModel):
     user_id: int
     content: str
     visibility: str  # or use an Enum if you have one
+    images: list[CommunityPostImageCreate] = Field(default_factory=list)
 
 
 class CommunityPostOut(BaseModel):
@@ -171,6 +191,7 @@ class CommunityPostOut(BaseModel):
     content: str
     visibility: str
     created_at: datetime
+    images: list[CommunityPostImageOut] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 

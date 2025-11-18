@@ -53,7 +53,6 @@ fqdn==1.5.1
 fsspec==2025.3.0
 gast==0.6.0
 gdown==5.2.0
-google==3.0.0
 google-ai-generativelanguage==0.6.15
 google-api-core==2.24.2
 google-api-python-client==2.166.0
@@ -62,6 +61,7 @@ google-auth-httplib2==0.2.0
 google-generativeai==0.8.4
 google-pasta==0.2.0
 googleapis-common-protos==1.69.2
+google-cloud-storage==2.18.2
 graphviz==0.21
 grpcio==1.71.0
 grpcio-status==1.71.0
@@ -164,6 +164,7 @@ python-dateutil==2.9.0.post0
 python-decouple==3.8
 python-dotenv==1.0.0
 python-json-logger==3.3.0
+python-multipart==0.0.6
 pytz==2025.2
 PyWavelets
 PyYAML==6.0.2

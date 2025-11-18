@@ -1,15 +1,83 @@
 # app/crud.py
 """CRUD layer using raw SQL (no ORM models)."""
 
+from collections import defaultdict
 from datetime import datetime
+import logging
+from typing import Any, Mapping, Sequence
+
+from sqlalchemy import bindparam, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 from . import schemas
 
 
+logger = logging.getLogger(__name__)
+_IMAGE_TABLE_AVAILABLE = True
+
+
 def get_status():
     return {"status": "ok"}
+
+
+def _fetch_image_map(db: Session, post_ids: Sequence[int]) -> dict[int, list[schemas.CommunityPostImageOut]]:
+    if not post_ids:
+        return {}
+
+    global _IMAGE_TABLE_AVAILABLE
+    if not _IMAGE_TABLE_AVAILABLE:
+        return {}
+
+    stmt = (
+        text(
+            """
+            SELECT image_id,
+                   post_id,
+                   file_name,
+                   storage_path,
+                   public_url,
+                   content_type,
+                   size_bytes,
+                   width,
+                   height,
+                   created_at
+            FROM CommunityPostImages
+            WHERE post_id IN :post_ids
+            ORDER BY created_at ASC, image_id ASC
+            """
+        ).bindparams(bindparam("post_ids", expanding=True))
+    )
+
+    try:
+        rows = db.execute(stmt, {"post_ids": list(post_ids)}).mappings().all()
+    except SQLAlchemyError as exc:  # table might not exist yet in some environments
+        message = str(exc)
+        if "CommunityPostImages" in message:
+            if _IMAGE_TABLE_AVAILABLE:
+                logger.warning(
+                    "CommunityPostImages table not found; serving posts without images until migration runs."
+                )
+            _IMAGE_TABLE_AVAILABLE = False
+            return {}
+        raise
+
+    image_map: dict[int, list[schemas.CommunityPostImageOut]] = defaultdict(list)
+    for row in rows:
+        image_map[row["post_id"]].append(schemas.CommunityPostImageOut(**row))
+    return image_map
+
+
+def _attach_images(
+    rows: list[Mapping[str, Any]],
+    image_map: dict[int, list[schemas.CommunityPostImageOut]],
+) -> list[schemas.CommunityPostOut]:
+    enriched: list[schemas.CommunityPostOut] = []
+    for row in rows:
+        payload = dict(row)
+        payload["images"] = image_map.get(payload["post_id"], [])
+        enriched.append(schemas.CommunityPostOut(**payload))
+    return enriched
 
 
 # ---------- USERS ----------
@@ -133,8 +201,53 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
             "created_at": now,
         },
     )
-    db.commit()
     post_id = result.lastrowid
+
+    if post_in.images:
+        insert_image_stmt = text(
+            """
+            INSERT INTO CommunityPostImages (
+                post_id,
+                file_name,
+                storage_path,
+                public_url,
+                content_type,
+                size_bytes,
+                width,
+                height,
+                created_at
+            )
+            VALUES (
+                :post_id,
+                :file_name,
+                :storage_path,
+                :public_url,
+                :content_type,
+                :size_bytes,
+                :width,
+                :height,
+                :created_at
+            )
+            """
+        )
+
+        for image in post_in.images:
+            db.execute(
+                insert_image_stmt,
+                {
+                    "post_id": post_id,
+                    "file_name": image.file_name,
+                    "storage_path": image.storage_path,
+                    "public_url": image.public_url,
+                    "content_type": image.content_type,
+                    "size_bytes": image.size_bytes,
+                    "width": image.width,
+                    "height": image.height,
+                    "created_at": now,
+                },
+            )
+
+    db.commit()
 
     row = db.execute(
         text(
@@ -152,8 +265,11 @@ def create_post(db: Session, post_in: schemas.CommunityPostCreate) -> schemas.Co
         ),
         {"post_id": post_id},
     ).mappings().first()
+    if not row:
+        raise ValueError("Post insert succeeded but fetching row failed")
 
-    return schemas.CommunityPostOut(**row)
+    image_map = _fetch_image_map(db, [post_id])
+    return _attach_images([row], image_map)[0]
 
 
 def list_posts(db: Session) -> list[schemas.CommunityPostOut]:
@@ -172,7 +288,9 @@ def list_posts(db: Session) -> list[schemas.CommunityPostOut]:
             """
         )
     ).mappings().all()
-    return [schemas.CommunityPostOut(**row) for row in rows]
+
+    image_map = _fetch_image_map(db, [row["post_id"] for row in rows])
+    return _attach_images(rows, image_map)
 
 
 def get_post(db: Session, post_id: int) -> schemas.CommunityPostOut | None:
@@ -193,7 +311,36 @@ def get_post(db: Session, post_id: int) -> schemas.CommunityPostOut | None:
         {"post_id": post_id},
     ).mappings().first()
 
-    return schemas.CommunityPostOut(**row) if row else None
+    if not row:
+        return None
+
+    image_map = _fetch_image_map(db, [post_id])
+    return _attach_images([row], image_map)[0]
+
+
+def list_post_images(db: Session, post_id: int) -> list[schemas.CommunityPostImageOut]:
+    rows = db.execute(
+        text(
+            """
+            SELECT image_id,
+                   post_id,
+                   file_name,
+                   storage_path,
+                   public_url,
+                   content_type,
+                   size_bytes,
+                   width,
+                   height,
+                   created_at
+            FROM CommunityPostImages
+            WHERE post_id = :post_id
+            ORDER BY created_at ASC, image_id ASC
+            """
+        ),
+        {"post_id": post_id},
+    ).mappings().all()
+
+    return [schemas.CommunityPostImageOut(**row) for row in rows]
 
 
 def add_comment(db: Session, comment_in: schemas.PostCommentCreate) -> schemas.PostCommentOut:
@@ -280,6 +427,10 @@ def delete_post(db: Session, post_id: int, user_id: int) -> str:
     )
     db.execute(
         text("DELETE FROM PostReactions WHERE post_id = :post_id"),
+        {"post_id": post_id},
+    )
+    db.execute(
+        text("DELETE FROM CommunityPostImages WHERE post_id = :post_id"),
         {"post_id": post_id},
     )
     db.execute(
