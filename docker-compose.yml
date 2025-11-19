@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8080"
+    depends_on:
+      - db
+    environment:
+      DB_USER: app_user
+      DB_PASS: StrongPassword123!
+      DB_NAME: wahoowell
+      DB_HOST: db
+      DB_PORT: 3306
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: StrongPassword123!
+      MYSQL_DATABASE: wahoowell
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: StrongPassword123!
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:

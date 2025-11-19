@@ -31,7 +31,7 @@ The community feed now supports attaching photos that are stored in Google Cloud
 
 1. Create (or reuse) a GCS bucket and make the `community-images/` folder publicly readable (either bucket-level IAM or signed URLs).
 2. Download a service-account key with write access to the bucket and set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the JSON file path.
-3. Add the following environment variables to your backend `.env` file:
+3. Provide the following environment variables (via your shell, deployment service, or a local `.env` file if you prefer during development):
 
 ```
 GCS_BUCKET_NAME=your-bucket-name

@@ -1,0 +1,23 @@
+# Exclude local-only artifacts from backend image builds
+.git
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.DS_Store
+
+# Environment files / secrets
+.env
+*.env
+*.env.*
+backend/.env
+frontend/.env
+frontend/.env.*
+
+# Node artifacts that shouldn't be copied when building backend
+frontend/node_modules
+frontend/.next
+frontend/.turbo
+
+# Python virtualenvs
+.venv
+venv
