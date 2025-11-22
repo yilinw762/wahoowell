@@ -15,7 +15,10 @@ def auto_create_profile(user_id: int, db: Session = Depends(get_db)):
 def get_profile(user_id: int, db: Session = Depends(get_db)):
     row = crud.get_profile(db, user_id)
     if not row:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        crud.create_profile(db, user_id)
+        row = crud.get_profile(db, user_id)
+        if not row:
+            raise HTTPException(status_code=500, detail="Profile could not be created")
     return schemas.ProfileOut(**row)
 
 @router.put("/{user_id}", response_model=schemas.ProfileOut)

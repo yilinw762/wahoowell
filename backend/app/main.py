@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,11 +25,22 @@ app.include_router(leaderboard.router)
 app.include_router(profiles.router)
 app.include_router(followers.router)  
 
-allowed_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://localhost:3000",
-]
+raw_allowed_origins = os.getenv("ALLOWED_ORIGINS")
+if raw_allowed_origins:
+    allowed_origins = [
+        origin.strip()
+        for origin in raw_allowed_origins.split(",")
+        if origin.strip()
+    ]
+else:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://localhost:3000",
+        "https://www.wahoowell.com",
+        "https://wahoowell-frontend-1072562211423.us-east4.run.app",
+        "https://wahoowell.com",
+    ]
 
 # CORS (adjust origins if needed)
 app.add_middleware(

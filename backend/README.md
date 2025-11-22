@@ -17,6 +17,16 @@ uvicorn backend.app.main:app --reload --port 8000
 
 3. Health check: `GET http://localhost:8000/api/health/ping`
 
+### Environment variables
+
+The backend now reads an optional comma-separated `ALLOWED_ORIGINS` variable to configure CORS at runtime. For example:
+
+```
+ALLOWED_ORIGINS=https://wahoowell-frontend-1072562211423.us-east4.run.app,https://your-custom-domain.com
+```
+
+If unset, it falls back to the local development origins (`http://localhost:3000`, etc.). Remember to also set the frontend environment variable `NEXT_PUBLIC_API_BASE` (and `BACKEND_BASE_URL` for server-side code) so the Next.js app calls your deployed API instead of `http://127.0.0.1:8000`.
+
 Next steps
 
 - Add a database (SQLAlchemy / Tortoise / or ORM of choice)
