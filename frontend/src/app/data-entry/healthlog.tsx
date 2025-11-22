@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import api from "@/libs/api";
 
 export default function HealthLogForm() {
   const [form, setForm] = useState({
@@ -34,12 +35,8 @@ export default function HealthLogForm() {
       stress_level: form.stress_level ? Number(form.stress_level) : null,
       notes: form.notes || null,
     };
-    const res = await fetch("http://127.0.0.1:8000/api/healthlogs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setResult(await res.json());
+    const { data } = await api.post("/api/healthlogs", payload);
+    setResult(data as HealthLogResponse);
   };
 
   return (

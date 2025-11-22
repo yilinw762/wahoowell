@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import api from "@/libs/api";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -28,19 +29,22 @@ export default function RegisterPage() {
     }
 
     // 1) Register in FastAPI
-    const res = await fetch("http://localhost:8000/api/users/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/users/register", {
         email: form.email,
         username: form.username || form.email.split("@")[0],
         password: form.password,
-      }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.detail || "Registration failed");
+      });
+    } catch (err) {
+      if (err && typeof err === "object" && "response" in err) {
+        const response = (err as { response?: { data?: { detail?: string } } }).response;
+        const detail = response?.data?.detail ?? "Registration failed";
+        setError(detail);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Registration failed");
+      }
       return;
     }
 

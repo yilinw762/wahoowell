@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import api from "@/libs/api";
 
 type Profile = {
   age?: number | "";
@@ -48,14 +49,13 @@ export default function ProfileForm() {
     bio: "",
   });
 
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
-    fetch(`http://127.0.0.1:8000/api/profiles/${userId}`)
-      .then(res => res.json())
-      .then((data: Profile) => {
+    api
+      .get<Profile>(`/api/profiles/${userId}`)
+      .then(({ data }) => {
         setForm({
           age: data.age ?? "",
           gender: data.gender ?? "",
@@ -84,14 +84,7 @@ export default function ProfileForm() {
       height_cm: form.height_cm === "" ? null : Number(form.height_cm),
       weight_kg: form.weight_kg === "" ? null : Number(form.weight_kg),
     };
-    const res = await fetch(`http://127.0.0.1:8000/api/profiles/${userId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-  const data = await res.json();
-  setResult(data as Record<string, unknown>);
+    await api.put(`/api/profiles/${userId}`, payload);
     setMessage("Profile updated!");
   };
 

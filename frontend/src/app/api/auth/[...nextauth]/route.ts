@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 const API_BASE =
+  process.env.BACKEND_BASE_URL ??
   process.env.API_BASE_URL ??
   process.env.NEXT_PUBLIC_API_BASE ??
   "http://127.0.0.1:8000";
@@ -38,7 +39,7 @@ async function fetchBackendUserId(payload: {
   }
 }
 
-export const authOptions: NextAuthOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -51,7 +52,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const res = await fetch("http://localhost:8000/api/users/login", {
+  const res = await fetch(`${API_BASE}/api/users/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

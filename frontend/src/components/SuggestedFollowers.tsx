@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import api from "@/libs/api";
 
 type ProfileWithFollowStatus = {
   user_id: number;
@@ -25,15 +26,41 @@ function getInitials(name?: string, email?: string) {
   return "?";
 }
 
+type SessionUser = {
+  user_id?: number | string;
+  id?: number | string;
+  sub?: number | string;
+};
+
+const deriveUserId = (user?: SessionUser): number | undefined => {
+  if (!user) return undefined;
+  const candidates = [user.user_id, user.id, user.sub];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    if (typeof candidate === "string" && candidate.trim()) {
+      const parsed = Number(candidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
+const toErrorMessage = (err: unknown, fallback: string) => {
+  if (err instanceof Error) return err.message;
+  return fallback;
+};
+
 export default function SuggestedFollowers() {
   const { data: session } = useSession();
-  const userId = (session?.user as any)?.user_id ?? (session?.user as any)?.id;
+  const userId = deriveUserId(session?.user as SessionUser | undefined);
 
   const [profiles, setProfiles] = useState<ProfileWithFollowStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const BACKEND_URL = "http://localhost:8000"; // adjust if your FastAPI runs elsewhere
 
   const fetchSuggestions = async () => {
     if (!userId) return;
@@ -42,41 +69,30 @@ export default function SuggestedFollowers() {
     setError(null);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/followers/suggestions/${userId}`);
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Failed to fetch: ${text}`);
-      }
-
-      const data: ProfileWithFollowStatus[] = await res.json();
+      const { data } = await api.get<ProfileWithFollowStatus[]>(
+        `/api/followers/suggestions/${userId}`
+      );
       setProfiles(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || "Unknown error fetching suggestions.");
+      setError(toErrorMessage(err, "Unknown error fetching suggestions."));
     } finally {
       setLoading(false);
     }
   };
 
   const handleFollow = async (targetId: number, follow: boolean) => {
-    const url = follow ? `${BACKEND_URL}/api/followers/add` : `${BACKEND_URL}/api/followers/unfollow`;
+    const url = follow ? "/api/followers/add" : "/api/followers/unfollow";
 
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, follower_user_id: targetId }),
+      await api.post(url, {
+        user_id: userId,
+        follower_user_id: targetId,
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Follow/unfollow failed: ${text}`);
-      }
 
       // Refresh suggestions after follow/unfollow
       fetchSuggestions();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
     }
   };

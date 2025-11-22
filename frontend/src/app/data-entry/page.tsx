@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import api from "@/libs/api";
 
 type DataEntryForm = {
   date: string;              // YYYY-MM-DD
@@ -85,17 +86,15 @@ export default function DataEntryPage() {
       setMessage(null);
 
       try {
-        const params = new URLSearchParams({
-          user_id: String(userId),
-          date: form.date,
-        });
-
-        const res = await fetch(
-          `http://127.0.0.1:8000/api/healthlogs?${params.toString()}`
+        const { data } = await api.get<HealthLogApiResponse>(
+          "/api/healthlogs",
+          {
+            params: {
+              user_id: String(userId),
+              date: form.date,
+            },
+          }
         );
-        if (!res.ok) throw new Error("Failed to fetch day data");
-
-        const data = (await res.json()) as HealthLogApiResponse;
 
         if (data === null) {
           // No entry yet for that day – clear fields but keep date
@@ -175,14 +174,7 @@ export default function DataEntryPage() {
     };
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/healthlogs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-
-      await res.json();
+      await api.post("/api/healthlogs", payload);
       setMessage("Saved successfully!");
     } catch (err) {
       console.error(err);

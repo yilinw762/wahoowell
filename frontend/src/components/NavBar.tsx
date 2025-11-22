@@ -3,6 +3,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 
+type SessionUser = {
+  name?: string | null;
+  email?: string | null;
+  username?: string | null;
+};
+
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/data-entry", label: "Data Entry" },
@@ -13,6 +19,8 @@ const links = [
 export default function Navbar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const sessionUser = (session?.user as SessionUser | undefined) ?? null;
+  const displayName = sessionUser?.name ?? sessionUser?.username ?? sessionUser?.email ?? "there";
 
   return (
     <nav style={{
@@ -64,9 +72,9 @@ export default function Navbar() {
           </div>
         </div>
         <div style={{display:"flex", alignItems:"center", gap:12}}>
-          {session?.user ? (
+          {sessionUser ? (
             <>
-              <span>Hello, {session.user.name || session.user.username || session.user.email}!</span>
+              <span>Hello, {displayName}!</span>
               <button
                 onClick={() => signOut({ callbackUrl: "/" })}
                 style={{

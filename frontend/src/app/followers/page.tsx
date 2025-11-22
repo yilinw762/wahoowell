@@ -10,9 +10,32 @@ type Follower = {
   since: string;
 };
 
+type SessionUser = {
+  user_id?: number | string;
+  id?: number | string;
+  sub?: number | string;
+};
+
+const deriveUserId = (user?: SessionUser): number | undefined => {
+  if (!user) return undefined;
+  const candidates = [user.user_id, user.id, user.sub];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    if (typeof candidate === "string" && candidate.trim()) {
+      const parsed = Number(candidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
 export default function FollowersPage() {
   const { data: session } = useSession();
-  const userId = (session?.user as any)?.user_id ?? (session?.user as any)?.id;
+  const userId = deriveUserId(session?.user as SessionUser | undefined);
   const [followers, setFollowers] = useState<Follower[]>([]);
 
   useEffect(() => {

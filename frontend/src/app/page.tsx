@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import TopPanel from "@/src/components/TopPanel";
 import StepsChart from "@/src/components/StepsChart";
+import api from "@/libs/api";
 
 type DashboardData = {
   steps_today: number;
@@ -79,12 +80,10 @@ export default function DashboardPage() {
     const fetchDashboard = async () => {
       setLoadingDashboard(true);
       try {
-        const res = await fetch(
-          `http://127.0.0.1:8000/api/dashboard/${userId}`
+        const { data } = await api.get<DashboardData>(
+          `/api/dashboard/${userId}`
         );
-        if (!res.ok) throw new Error("Failed to fetch dashboard");
-        const json = (await res.json()) as DashboardData;
-        setDashboard(json);
+        setDashboard(data);
       } catch (err) {
         console.error(err);
         // keep default zeros
@@ -104,14 +103,10 @@ export default function DashboardPage() {
       setLoadingLeaderboard(true);
       setLeaderboardError(null);
       try {
-        const res = await fetch(
-          `http://127.0.0.1:8000/api/leaderboard/${userId}`
+        const { data } = await api.get<LeaderboardResponse>(
+          `/api/leaderboard/${userId}`
         );
-        if (!res.ok) {
-          throw new Error("Failed to fetch leaderboard");
-        }
-        const json = (await res.json()) as LeaderboardResponse;
-        setLeaderboard(json);
+        setLeaderboard(data);
       } catch (err) {
         console.error(err);
         setLeaderboardError("Could not load leaderboard.");
