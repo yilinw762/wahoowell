@@ -114,3 +114,38 @@ def unfollow_user(action: FollowAction, db: Session = Depends(get_db)):
     )
     db.commit()
     return {"status": "unfollowed"}
+
+
+# List people the user is following
+@router.get("/following/{user_id}")
+def list_following(user_id: int, db: Session = Depends(get_db)):
+    rows = db.execute(
+        text("""
+            SELECT f.follower_id, f.user_id, f.follower_user_id, f.since,
+                   u.username, u.email, p.bio
+            FROM Followers f
+            JOIN Users u ON f.follower_user_id = u.user_id
+            LEFT JOIN Profiles p ON u.user_id = p.user_id
+            WHERE f.user_id = :user_id
+            ORDER BY f.since DESC
+        """),
+        {"user_id": user_id}
+    ).mappings().all()
+    return [dict(row) for row in rows]
+
+# List people who follow the user
+@router.get("/followers/{user_id}")
+def list_followers(user_id: int, db: Session = Depends(get_db)):
+    rows = db.execute(
+        text("""
+            SELECT f.follower_id, f.user_id, f.follower_user_id, f.since,
+                   u.username, u.email, p.bio
+            FROM Followers f
+            JOIN Users u ON f.user_id = u.user_id
+            LEFT JOIN Profiles p ON u.user_id = p.user_id
+            WHERE f.follower_user_id = :user_id
+            ORDER BY f.since DESC
+        """),
+        {"user_id": user_id}
+    ).mappings().all()
+    return [dict(row) for row in rows]
