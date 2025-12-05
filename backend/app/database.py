@@ -9,7 +9,8 @@ if os.getenv("ENV") != "production":
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
+raw_port = os.getenv("DB_PORT")
+DB_PORT = raw_port if raw_port and raw_port.lower() != "none" else "3306"
 DB_NAME = os.getenv("DB_NAME")
 if os.getenv("ENV") != "production":
     SQLALCHEMY_DATABASE_URL = (

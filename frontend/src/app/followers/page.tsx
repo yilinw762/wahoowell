@@ -1,9 +1,8 @@
 "use client";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-
-const API_BASE = "http://localhost:8000";
+import api from "@/libs/api";
 
 type Follower = {
   follower_id: number;
@@ -51,18 +50,18 @@ export default function FollowersPage() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<{ [key: number]: boolean }>({});
 
-  const refreshLists = async () => {
+  const refreshLists = useCallback(async () => {
     if (!userId) return;
 
     setLoading(true);
     try {
       const [followingRes, followersRes] = await Promise.all([
-        fetch(`${API_BASE}/api/followers/following/${userId}`),
-        fetch(`${API_BASE}/api/followers/followers/${userId}`)
+        api.get<Follower[]>(`/api/followers/following/${userId}`),
+        api.get<Follower[]>(`/api/followers/followers/${userId}`),
       ]);
 
-      const followingData = await followingRes.json();
-      const followersData = await followersRes.json();
+      const followingData = followingRes.data ?? [];
+      const followersData = followersRes.data ?? [];
 
       // Process following data - you follow them, need to check if they follow you back
       const followingWithStatus = Array.isArray(followingData) ? 
@@ -87,28 +86,21 @@ export default function FollowersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     refreshLists();
-  }, [userId]);
+  }, [refreshLists]);
 
   // Follow/unfollow handler
   const toggleFollow = async (targetUserId: number, follow: boolean) => {
     setPending(prev => ({ ...prev, [targetUserId]: true }));
 
-    const url = follow
-      ? `${API_BASE}/api/followers/add`
-      : `${API_BASE}/api/followers/unfollow`;
-
     try {
-      await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          follower_user_id: targetUserId
-        }),
+      const endpoint = follow ? "/api/followers/add" : "/api/followers/unfollow";
+      await api.post(endpoint, {
+        user_id: userId,
+        follower_user_id: targetUserId,
       });
 
       // Update local state optimistically before refresh

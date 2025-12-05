@@ -3,11 +3,27 @@ import { JWT } from "next-auth/jwt";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-const API_BASE =
-  process.env.BACKEND_BASE_URL ??
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE ??
-  "http://127.0.0.1:8000";
+const resolveApiBase = (): string => {
+  const apiBaseFromEnv =
+    process.env.BACKEND_BASE_URL ??
+    process.env.API_BASE_URL ??
+    process.env.NEXT_PUBLIC_API_BASE;
+
+  const fallbackBase =
+    process.env.NODE_ENV === "production" ? undefined : "http://127.0.0.1:8000";
+
+  const resolved = apiBaseFromEnv ?? fallbackBase;
+
+  if (!resolved) {
+    throw new Error(
+      "Missing BACKEND_BASE_URL (or NEXT_PUBLIC_API_BASE) environment variable for NextAuth route"
+    );
+  }
+
+  return resolved.replace(/\/$/, "");
+};
+
+const buildBackendUrl = (path: string): string => `${resolveApiBase()}${path}`;
 
 async function fetchBackendUserId(payload: {
   email?: string | null;
@@ -16,7 +32,7 @@ async function fetchBackendUserId(payload: {
   if (!payload.email) return undefined;
 
   try {
-    const res = await fetch(`${API_BASE}/api/users/upsert`, {
+  const res = await fetch(buildBackendUrl("/api/users/upsert"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -52,7 +68,7 @@ const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-  const res = await fetch(`${API_BASE}/api/users/login`, {
+  const res = await fetch(buildBackendUrl("/api/users/login"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
