@@ -13,6 +13,8 @@ type Follower = {
   username?: string;
   email?: string;
   bio?: string;
+  is_following?: boolean; // Whether YOU follow THEM
+  they_follow_you?: boolean; // Whether THEY follow YOU
 };
 
 type SessionUser = {
@@ -47,28 +49,55 @@ export default function FollowersPage() {
   const [following, setFollowing] = useState<Follower[]>([]);
   const [followers, setFollowers] = useState<Follower[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingFollows, setPendingFollows] = useState<{[key: number]: boolean}>({});
+  const [pending, setPending] = useState<{ [key: number]: boolean }>({});
 
-  useEffect(() => {
+  const refreshLists = async () => {
     if (!userId) return;
 
     setLoading(true);
+    try {
+      const [followingRes, followersRes] = await Promise.all([
+        fetch(`${API_BASE}/api/followers/following/${userId}`),
+        fetch(`${API_BASE}/api/followers/followers/${userId}`)
+      ]);
 
-    Promise.all([
-      fetch(`${API_BASE}/api/followers/following/${userId}`).then(res => res.json()),
-      fetch(`${API_BASE}/api/followers/followers/${userId}`).then(res => res.json())
-    ])
-      .then(([followingData, followersData]) => {
-        setFollowing(Array.isArray(followingData) ? followingData : []);
-        setFollowers(Array.isArray(followersData) ? followersData : []);
-      })
-      .finally(() => setLoading(false));
+      const followingData = await followingRes.json();
+      const followersData = await followersRes.json();
+
+      // Process following data - you follow them, need to check if they follow you back
+      const followingWithStatus = Array.isArray(followingData) ? 
+        followingData.map((user: Follower) => ({
+          ...user,
+          is_following: true, // By definition in following tab
+          they_follow_you: followersData.some((f: Follower) => f.user_id === user.follower_user_id)
+        })) : [];
+
+      // Process followers data - they follow you, need to check if you follow them back
+      const followersWithStatus = Array.isArray(followersData) ? 
+        followersData.map((user: Follower) => ({
+          ...user,
+          is_following: followingData.some((f: Follower) => f.follower_user_id === user.user_id),
+          they_follow_you: true // By definition in followers tab
+        })) : [];
+
+      setFollowing(followingWithStatus);
+      setFollowers(followersWithStatus);
+    } catch (error) {
+      console.error("Error refreshing lists:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshLists();
   }, [userId]);
 
-  const handleFollowToggle = async (targetUserId: number, follow: boolean) => {
-    setPendingFollows(prev => ({ ...prev, [targetUserId]: true }));
+  // Follow/unfollow handler
+  const toggleFollow = async (targetUserId: number, follow: boolean) => {
+    setPending(prev => ({ ...prev, [targetUserId]: true }));
 
-    const url = follow 
+    const url = follow
       ? `${API_BASE}/api/followers/add`
       : `${API_BASE}/api/followers/unfollow`;
 
@@ -76,59 +105,79 @@ export default function FollowersPage() {
       await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          user_id: userId, 
-          follower_user_id: targetUserId 
+        body: JSON.stringify({
+          user_id: userId,
+          follower_user_id: targetUserId
         }),
       });
 
-      // Refresh both lists
-      const [followingRes, followersRes] = await Promise.all([
-        fetch(`${API_BASE}/api/followers/following/${userId}`),
-        fetch(`${API_BASE}/api/followers/followers/${userId}`)
-      ]);
+      // Update local state optimistically before refresh
+      if (tab === "followers") {
+        setFollowers(prev => 
+          prev.map(user => 
+            user.user_id === targetUserId 
+              ? { ...user, is_following: follow }
+              : user
+          )
+        );
+      } else {
+        // In following tab, if unfollowing, remove from list
+        if (!follow) {
+          setFollowing(prev => 
+            prev.filter(user => user.follower_user_id !== targetUserId)
+          );
+        } else {
+          // If following someone new (shouldn't happen in following tab but just in case)
+          setFollowing(prev => 
+            prev.map(user => 
+              user.follower_user_id === targetUserId 
+                ? { ...user, is_following: follow }
+                : user
+            )
+          );
+        }
+      }
 
-      const followingData = await followingRes.json();
-      const followersData = await followersRes.json();
-
-      setFollowing(Array.isArray(followingData) ? followingData : []);
-      setFollowers(Array.isArray(followersData) ? followersData : []);
+      // Full refresh to get accurate they_follow_you status
+      await refreshLists();
     } catch (error) {
       console.error("Error toggling follow:", error);
+      // Revert optimistic update on error
+      await refreshLists();
     } finally {
-      setPendingFollows(prev => ({ ...prev, [targetUserId]: false }));
+      setPending(prev => ({ ...prev, [targetUserId]: false }));
     }
   };
 
-  const handleRemoveFollower = async (followerUserId: number) => {
-    setPendingFollows(prev => ({ ...prev, [followerUserId]: true }));
+  // Determine button state based on Instagram logic
+  const getButtonConfig = (user: Follower, isFollowingTab: boolean) => {
+    const targetUserId = isFollowingTab ? user.follower_user_id : user.user_id;
+    const youFollowThem = user.is_following || false;
+    const theyFollowYou = user.they_follow_you || false;
 
-    try {
-      await fetch(`${API_BASE}/api/followers/remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          user_id: userId, 
-          follower_user_id: followerUserId 
-        }),
-      });
+    let buttonLabel = "";
+    let buttonAction: (() => void) | null = null;
+    let isActive = false;
 
-      // Refresh both lists
-      const [followingRes, followersRes] = await Promise.all([
-        fetch(`${API_BASE}/api/followers/following/${userId}`),
-        fetch(`${API_BASE}/api/followers/followers/${userId}`)
-      ]);
-
-      const followingData = await followingRes.json();
-      const followersData = await followersRes.json();
-
-      setFollowing(Array.isArray(followingData) ? followingData : []);
-      setFollowers(Array.isArray(followersData) ? followersData : []);
-    } catch (error) {
-      console.error("Error removing follower:", error);
-    } finally {
-      setPendingFollows(prev => ({ ...prev, [followerUserId]: false }));
+    // Instagram logic
+    if (youFollowThem) {
+      // Case C: You already follow them
+      buttonLabel = "Following";
+      buttonAction = () => toggleFollow(targetUserId, false); // Unfollow
+      isActive = true;
+    } else if (theyFollowYou) {
+      // Case B: They follow you, but you don't follow back
+      buttonLabel = "Follow Back";
+      buttonAction = () => toggleFollow(targetUserId, true); // Follow
+      isActive = false;
+    } else {
+      // Case A: No relationship
+      buttonLabel = "Follow";
+      buttonAction = () => toggleFollow(targetUserId, true); // Follow
+      isActive = false;
     }
+
+    return { buttonLabel, buttonAction, isActive };
   };
 
   if (!userId) {
@@ -148,15 +197,17 @@ export default function FollowersPage() {
   }
 
   const activeList = tab === "following" ? following : followers;
+  const isFollowingTab = tab === "following";
 
   return (
-    <div style={{ 
-      minHeight: "100vh", 
-      background: "var(--global-background)", 
-      color: "#fff" 
+    <div style={{
+      minHeight: "100vh",
+      background: "var(--global-background)",
+      color: "#fff"
     }}>
       <div style={{ maxWidth: 700, margin: "0 auto" }}>
-        {/* Header */}
+
+        {/* HEADER */}
         <div style={{
           position: "sticky",
           top: 0,
@@ -170,8 +221,9 @@ export default function FollowersPage() {
               Connections
             </h1>
           </div>
-          {/* Tab Bar */}
-          <div style={{ display: "flex", borderBottom: "1px solid #1e293b" }}>
+
+          {/* TAB BAR */}
+          <div style={{ display: "flex" }}>
             <button
               onClick={() => setTab("following")}
               style={{
@@ -179,26 +231,24 @@ export default function FollowersPage() {
                 padding: "18px 0",
                 fontSize: 18,
                 fontWeight: 700,
-                position: "relative",
+                color: tab === "following" ? "#fff" : "#94a3b8",
                 background: "transparent",
                 border: "none",
-                color: tab === "following" ? "#fff" : "#94a3b8",
                 cursor: "pointer",
-                transition: "color 0.2s"
+                position: "relative"
               }}
             >
-              <span>{following.length} Following</span>
+              {following.length} Following
               {tab === "following" && (
                 <div style={{
                   position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
+                  bottom: 0, left: 0, right: 0,
                   height: 3,
                   background: "#3b82f6"
                 }} />
               )}
             </button>
+
             <button
               onClick={() => setTab("followers")}
               style={{
@@ -206,21 +256,18 @@ export default function FollowersPage() {
                 padding: "18px 0",
                 fontSize: 18,
                 fontWeight: 700,
-                position: "relative",
+                color: tab === "followers" ? "#fff" : "#94a3b8",
                 background: "transparent",
                 border: "none",
-                color: tab === "followers" ? "#fff" : "#94a3b8",
                 cursor: "pointer",
-                transition: "color 0.2s"
+                position: "relative"
               }}
             >
-              <span>{followers.length} Followers</span>
+              {followers.length} Followers
               {tab === "followers" && (
                 <div style={{
                   position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
+                  bottom: 0, left: 0, right: 0,
                   height: 3,
                   background: "#3b82f6"
                 }} />
@@ -229,133 +276,88 @@ export default function FollowersPage() {
           </div>
         </div>
 
-        {/* Content */}
+        {/* CONTENT */}
         <div style={{ padding: "16px 24px" }}>
           {loading && (
-            <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                border: "3px solid #334155",
-                borderTopColor: "#3b82f6",
-                borderRadius: "50%",
-                animation: "spin 1s linear infinite"
-              }} />
-            </div>
+            <div style={{ textAlign: "center", padding: 40 }}>Loading...</div>
           )}
-          
+
           {!loading && activeList.length === 0 && (
-            <div style={{ textAlign: "center", padding: "64px 0" }}>
-              <div style={{ color: "#94a3b8", fontSize: 18 }}>
-                {tab === "following" 
-                  ? "You're not following anyone yet" 
-                  : "No followers yet"}
-              </div>
+            <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+              {tab === "following"
+                ? "You're not following anyone yet"
+                : "No followers yet"}
             </div>
           )}
 
           <div>
-            {activeList.map(f => {
-              // Get the profile user ID based on current tab
-              const profileUserId = tab === "following" ? f.user_id : f.follower_user_id;
-              const displayName = f.username ?? f.email;
+            {activeList.map(user => {
+              const targetUserId = isFollowingTab ? user.follower_user_id : user.user_id;
+              const name = user.username ?? user.email;
               
+              const { buttonLabel, buttonAction, isActive } = getButtonConfig(user, isFollowingTab);
+
               return (
-                <div
-                  key={f.follower_id}
-                  style={{
-                    padding: "20px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 24,
-                    borderBottom: "1px solid #1e293b",
-                    transition: "background 0.2s",
-                    fontSize: 18,
-                    borderRadius: "12px",
-                    marginBottom: "8px",
-                    background: "rgba(30, 41, 59, 0.5)"
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(30, 41, 59, 0.8)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(30, 41, 59, 0.5)"}
-                >
-                  {/* Avatar */}
-                  <Link href={`/profiles/${profileUserId}`} style={{ textDecoration: "none" }}>
+                <div key={user.follower_id} style={{
+                  padding: "20px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  borderBottom: "1px solid #1e293b",
+                  gap: 20
+                }}>
+                  <Link href={`/profiles/${targetUserId}`}>
                     <div style={{
-                      width: 64,
-                      height: 64,
+                      width: 56, height: 56,
                       borderRadius: "50%",
-                      background: "linear-gradient(135deg, #b2e4ff 0%, #e0c3fc 100%)",
+                      background: "#e0c3fc",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "#0f172a",
                       fontWeight: 700,
-                      fontSize: 24,
-                      flexShrink: 0,
-                      cursor: "pointer",
-                      transition: "transform 0.2s"
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
-                    onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
-                    >
-                      {getInitials(displayName)}
-                    </div>
+                      fontSize: 20,
+                      color: "#0f172a"
+                    }}>{getInitials(name)}</div>
                   </Link>
 
-                  {/* User Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Link href={`/profiles/${profileUserId}`} style={{ textDecoration: "none" }}>
-                      <div style={{
-                        fontWeight: 700,
-                        fontSize: 20,
-                        color: "#fff",
-                        transition: "color 0.2s",
-                        cursor: "pointer"
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.color = "#60a5fa"}
-                      onMouseLeave={e => e.currentTarget.style.color = "#fff"}
-                      >
-                        {displayName}
+                  <div style={{ flex: 1 }}>
+                    <Link href={`/profiles/${targetUserId}`}>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>
+                        {name}
                       </div>
                     </Link>
-                    {f.bio && (
-                      <div style={{
-                        color: "#cbd5e1",
-                        fontSize: 16,
-                        marginTop: 4,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                        {f.bio}
+                    {user.bio && (
+                      <div style={{ color: "#cbd5e1", fontSize: 14 }}>
+                        {user.bio}
                       </div>
                     )}
-                    <div style={{ color: "#94a3b8", fontSize: 14, marginTop: 2 }}>
-                      Since {new Date(f.since).toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        year: 'numeric' 
-                      })}
-                    </div>
                   </div>
+
+                  {/* BUTTON */}
+                  {buttonAction && (
+                    <button
+                      onClick={buttonAction}
+                      disabled={pending[targetUserId]}
+                      style={{
+                        padding: "10px 18px",
+                        borderRadius: 10,
+                        border: isActive ? "1px solid #374151" : "1px solid #3b82f6",
+                        background: isActive ? "transparent" : "#3b82f6",
+                        color: isActive ? "#fff" : "#fff",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        minWidth: 110,
+                        opacity: pending[targetUserId] ? 0.7 : 1
+                      }}
+                    >
+                      {pending[targetUserId] ? "..." : buttonLabel}
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
       </div>
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        
-        a {
-          text-decoration: none;
-        }
-        
-        button:disabled {
-          cursor: not-allowed;
-        }
-      `}</style>
     </div>
   );
 }
