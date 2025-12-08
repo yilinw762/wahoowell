@@ -3,29 +3,16 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-if os.getenv("ENV") != "production":
-    load_dotenv()
+# load .env for local development
+load_dotenv()
 
-DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASS")
-DB_HOST = os.getenv("DB_HOST")
-raw_port = os.getenv("DB_PORT")
-DB_PORT = raw_port if raw_port and raw_port.lower() != "none" else "3306"
-DB_NAME = os.getenv("DB_NAME")
-if os.getenv("ENV") != "production":
-    SQLALCHEMY_DATABASE_URL = (
-        f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Use DATABASE_URL from .env directly
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-        )
-else:
-    SQLALCHEMY_DATABASE_URL =  (
-        f"mysql+pymysql://{DB_USER}:{DB_PASS}@/{DB_NAME}"
-        f"?unix_socket={DB_HOST}"
-    )
-engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+# Create SQLAlchemy engine
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# You no longer need to use Base/models anywhere; DB is pre-created in MySQL.
 Base = declarative_base()
 
 def get_db():

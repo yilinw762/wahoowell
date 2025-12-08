@@ -18,16 +18,20 @@ logging.basicConfig(level=logging.DEBUG)
 @router.post("/register", response_model=schemas.User)
 def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     # 1) Check if email already exists
-    existing = db.execute(
-        text(
-            """
+    existing = (
+        db.execute(
+            text(
+                """
             SELECT user_id, email, username, created_at
             FROM Users
             WHERE email = :email
             """
-        ),
-        {"email": user_in.email},
-    ).mappings().first()
+            ),
+            {"email": user_in.email},
+        )
+        .mappings()
+        .first()
+    )
 
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -40,7 +44,7 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     username = user_in.username or user_in.email.split("@")[0]
 
     # 3) Insert user
-    result = db.execute(
+    db.execute(
         text(
             """
             INSERT INTO Users (email, username, password_hash)
@@ -53,21 +57,26 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
             "password_hash": hashed_pw.decode("utf-8"),
         },
     )
-    user_id = result.lastrowid
+    db.commit()  # <-- This ensures the user is saved!
 
-    row = db.execute(
-        text(
-            """
+    user_id = db.execute(text("SELECT LAST_INSERT_ID()")).scalar()
+
+    row = (
+        db.execute(
+            text(
+                """
             SELECT user_id, email, username, created_at
             FROM Users
             WHERE user_id = :user_id
             """
-        ),
-        {"user_id": user_id},
-    ).mappings().first()
+            ),
+            {"user_id": user_id},
+        )
+        .mappings()
+        .first()
+    )
 
     return schemas.User(**row)
-
 
 @router.post("/upsert", response_model=schemas.User)
 async def upsert_user(
@@ -99,21 +108,30 @@ async def upsert_user(
             detail={"error": str(e), "type": type(e).__name__},
         )
 
+
 @router.post("/login", response_model=schemas.User)
 def login(user_in: schemas.UserLogin, db: Session = Depends(get_db)):
-    row = db.execute(
-        text("""
+    row = (
+        db.execute(
+            text(
+                """
             SELECT user_id, email, username, password_hash, created_at
             FROM Users
             WHERE email = :email
-        """),
-        {"email": user_in.email},
-    ).mappings().first()
+        """
+            ),
+            {"email": user_in.email},
+        )
+        .mappings()
+        .first()
+    )
 
     if not row or not row["password_hash"]:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not bcrypt.checkpw(user_in.password.encode("utf-8"), row["password_hash"].encode("utf-8")):
+    if not bcrypt.checkpw(
+        user_in.password.encode("utf-8"), row["password_hash"].encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     return schemas.User(
